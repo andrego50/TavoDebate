@@ -14,7 +14,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "5435:5432"
 
   redis:
     image: redis:7-alpine
@@ -34,7 +34,7 @@ services:
     environment:
       AGENT_TYPE: orchestrator
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -84,7 +84,7 @@ services:
     environment:
       AGENT_TYPE: pantalla
     ports:
-      - "8080:8080"
+      - "8085:8080"
     depends_on:
       - orchestrator
 
