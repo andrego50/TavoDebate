@@ -351,6 +351,8 @@ class ChatAgent(BaseAgent):
                     from handlers.phase_handlers import get_participants_summary
                     summary = await get_participants_summary()
                     await self._send_response(chat_id, summary)
+                    from handlers.admin_handlers import _execute_phase_actions
+                    await _execute_phase_actions(self, fase_key, chat_id)
 
     async def _send_response(self, chat_id: int, text: str, parse_mode: str = "Markdown"):
         """Envía respuesta al usuario via telegram:outgoing stream."""

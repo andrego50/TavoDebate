@@ -120,10 +120,11 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
                 "args": {"phase": fase_key},
             })
             await agent._send_response(chat_id, f"✅ Fase cambiada a: *{fase_info['nombre']}*")
-            # Send participants summary
+            # Send participants summary + phase-specific actions
             from handlers.phase_handlers import get_participants_summary
             summary = await get_participants_summary()
             await agent._send_response(chat_id, summary)
+            await _execute_phase_actions(agent, fase_key, chat_id)
 
     elif cmd == "ronda":
         try:
@@ -230,3 +231,99 @@ async def _create_test_users(agent, chat_id: int):
             )
 
     await agent._send_response(chat_id, "10 usuarios de prueba creados.")
+
+
+async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
+    """Ejecuta acciones automáticas al cambiar de fase."""
+    if fase_key == "ponencia_alcalde":
+        # Broadcast the alcalde presentation to all registered concejales
+        from core.ponencia_alcalde import PONENCIA_ALCALDE, PONENCIA_ALCALDE_CORTA
+        pantalla_url = f"http://{settings.vps_domain}:8085/pantalla"
+
+        # Get all registered concejal telegram_ids
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text(
+                    "SELECT telegram_id FROM users "
+                    "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador'"
+                )
+            )
+            concejales = [row[0] for row in result.fetchall()]
+
+        if not concejales:
+            await agent._send_response(admin_chat_id, "⚠️ No hay concejales registrados para enviar la ponencia.")
+            return
+
+        # Send full presentation to all concejales
+        ponencia = PONENCIA_ALCALDE.replace("{pantalla_url}", pantalla_url)
+        for tid in concejales:
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(tid),
+                "text": ponencia,
+                "parse_mode": "Markdown",
+            })
+
+        await agent._send_response(
+            admin_chat_id,
+            f"📨 Ponencia del Alcalde enviada a *{len(concejales)}* concejales."
+        )
+
+    elif fase_key == "votacion":
+        # Remind all concejales to vote
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text(
+                    "SELECT telegram_id FROM users "
+                    "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador'"
+                )
+            )
+            concejales = [row[0] for row in result.fetchall()]
+
+        for tid in concejales:
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(tid),
+                "text": (
+                    "🗳️ *FASE DE VOTACIÓN ABIERTA*\n\n"
+                    "Es hora de votar el Proyecto de Acuerdo SIADR.\n\n"
+                    "Usa: `/votar_proyecto a_favor`, `en_contra` o `abstencion`\n\n"
+                    "Tu voto es secreto y personal."
+                ),
+                "parse_mode": "Markdown",
+            })
+
+        await agent._send_response(
+            admin_chat_id,
+            f"🗳️ Aviso de votación enviado a *{len(concejales)}* concejales."
+        )
+
+    elif fase_key == "debriefing":
+        # Remind about certificates
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text(
+                    "SELECT telegram_id FROM users "
+                    "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador'"
+                )
+            )
+            concejales = [row[0] for row in result.fetchall()]
+
+        for tid in concejales:
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(tid),
+                "text": (
+                    "🎓 *SESIÓN FINALIZADA*\n\n"
+                    "Gracias por participar en el Gran Concejo del Futuro.\n\n"
+                    "Descarga tu certificado de participación: /mi\\_certificado\n\n"
+                    "🔗 Revive el debate en vivo:\n"
+                    f"http://{settings.vps_domain}:8085/pantalla"
+                ),
+                "parse_mode": "Markdown",
+            })
+
+        await agent._send_response(
+            admin_chat_id,
+            f"🎓 Aviso de cierre enviado a *{len(concejales)}* concejales."
+        )
