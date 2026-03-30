@@ -83,16 +83,16 @@ class ChatAgent(BaseAgent):
             await self._handle_command(user_id, chat_id, text, username, first_name)
             return
 
-        # Check if user is in onboarding
+        # Check if user is in onboarding (step 0=PIN, 1-4=onboarding steps)
         async with get_session() as session:
             from sqlalchemy import text as sql_text
-            result = await session.execute(
-                sql_text("SELECT onboarding_step FROM users WHERE telegram_id = :tid"),
+            result_full = await session.execute(
+                sql_text("SELECT onboarding_step, onboarding_complete FROM users WHERE telegram_id = :tid"),
                 {"tid": user_id},
             )
-            step = result.scalar()
+            row = result_full.mappings().first()
 
-        if step and step > 0:
+        if row and not row["onboarding_complete"]:
             from handlers.onboarding import process_onboarding_text
             await process_onboarding_text(self, user_id, chat_id, text)
             return
@@ -157,6 +157,28 @@ class ChatAgent(BaseAgent):
                 f"_{voice_info.get('descripcion', '')}_\n\n"
                 f"Ahora todas tus preguntas serán respondidas desde esta perspectiva."
             )
+        # PIN management (admin only)
+        elif command == "/pin":
+            if user_id not in settings.admin_ids:
+                return
+            import redis.asyncio as aioredis
+            redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+            if not args:
+                # Show current PIN or clear it
+                current = await redis.get("tavodebate:access_pin")
+                if current:
+                    await self._send_response(chat_id, f"🔐 PIN activo: *{current}*\nPara quitar: `/pin off`")
+                else:
+                    await self._send_response(chat_id, "No hay PIN activo. Registro abierto.\nPara activar: `/pin 1234`")
+            elif args.strip().lower() == "off":
+                await redis.delete("tavodebate:access_pin")
+                await self._send_response(chat_id, "🔓 PIN desactivado. Registro abierto para todos.")
+            elif args.strip().isdigit() and len(args.strip()) == 4:
+                await redis.set("tavodebate:access_pin", args.strip())
+                await self._send_response(chat_id, f"🔐 PIN activado: *{args.strip()}*\nLos nuevos usuarios deben ingresar este código para registrarse.")
+            else:
+                await self._send_response(chat_id, "Uso: `/pin 1234` (4 dígitos) o `/pin off`")
+            await redis.aclose()
         # Admin commands
         elif command in (
             "/broadcast", "/bomba", "/fakenews", "/presion", "/gabinete_remover",

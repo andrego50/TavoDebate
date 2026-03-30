@@ -86,9 +86,10 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
             "/tweet <texto> — Tweet simulado\n"
             "/alerta <msg> — Alerta visual\n\n"
             "*Info:*\n"
-            "/estado — Status del ejercicio\n"
+            "/estado — Stats del ejercicio\n"
+            "/pin 1234 — Activar PIN de acceso\n"
+            "/pin off — Desactivar PIN\n"
             "/llm deepseek|kimi — Cambiar LLM\n"
-            "/modo\\_test — Toggle modo pruebas\n"
             "/briefing — Forzar briefing\n"
             "/help — Ayuda completa"
         )
@@ -116,15 +117,32 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
         await agent._send_response(chat_id, msg)
         return
 
-    # Step 1: Ask name
-    msg = (
-        "🏛️ *Bienvenido al Gran Concejo del Futuro — TavoDebate*\n\n"
-        "Soy tu asistente de IA para la simulación legislativa sobre el "
-        "proyecto SIADR de Cundinamarca.\n\n"
-        "*Paso 1 de 4:* ¿Cuál es tu nombre completo?"
-    )
+    # Check if access PIN is active
+    import redis.asyncio as aioredis
+    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    pin = await redis.get("tavodebate:access_pin")
+    await redis.aclose()
 
-    # Create user record with onboarding_step=1
+    if pin:
+        # PIN is active — start at step 0 (PIN verification)
+        start_step = 0
+        msg = (
+            "🏛️ *Bienvenido al Gran Concejo del Futuro — TavoDebate*\n\n"
+            "Soy tu asistente de IA para la simulación legislativa sobre el "
+            "proyecto SIADR de Cundinamarca.\n\n"
+            "🔐 *Ingresa el código de acceso (4 dígitos):*"
+        )
+    else:
+        # No PIN — go straight to step 1
+        start_step = 1
+        msg = (
+            "🏛️ *Bienvenido al Gran Concejo del Futuro — TavoDebate*\n\n"
+            "Soy tu asistente de IA para la simulación legislativa sobre el "
+            "proyecto SIADR de Cundinamarca.\n\n"
+            "*Paso 1 de 4:* ¿Cuál es tu nombre completo?"
+        )
+
+    # Create user record
     async with get_session() as session:
         from sqlalchemy import text as sql_text
         if not user:
@@ -132,15 +150,15 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
                 sql_text(
                     "INSERT INTO users (telegram_id, username, nombre_completo, municipio, "
                     "provincia, bancada_id, bancada_nombre, onboarding_step) "
-                    "VALUES (:tid, :un, '', '', '', 1, '', 1) "
-                    "ON CONFLICT (telegram_id) DO UPDATE SET onboarding_step = 1"
+                    "VALUES (:tid, :un, '', '', '', 1, '', :step) "
+                    "ON CONFLICT (telegram_id) DO UPDATE SET onboarding_step = :step"
                 ),
-                {"tid": user_id, "un": username or ""},
+                {"tid": user_id, "un": username or "", "step": start_step},
             )
         else:
             await session.execute(
-                sql_text("UPDATE users SET onboarding_step = 1 WHERE telegram_id = :tid"),
-                {"tid": user_id},
+                sql_text("UPDATE users SET onboarding_step = :step WHERE telegram_id = :tid"),
+                {"step": start_step, "tid": user_id},
             )
 
     await agent._send_response(chat_id, msg)
@@ -245,7 +263,33 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
         )
         step = result.scalar()
 
-    if step == 1:
+    if step == 0:
+        # Step 0: PIN verification
+        import aioredis
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        pin = await redis.get("tavodebate:access_pin")
+        await redis.aclose()
+
+        if text.strip() == pin:
+            # PIN correct — advance to step 1
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                await session.execute(
+                    sql_text("UPDATE users SET onboarding_step = 1 WHERE telegram_id = :tid"),
+                    {"tid": user_id},
+                )
+            await agent._send_response(
+                chat_id,
+                "✅ Código correcto.\n\n*Paso 1 de 4:* ¿Cuál es tu nombre completo?"
+            )
+        else:
+            await agent._send_response(
+                chat_id,
+                "❌ Código incorrecto. Intenta de nuevo (4 dígitos):"
+            )
+        return
+
+    elif step == 1:
         # Step 1: Save name, show provinces
         nombre = text.strip()
         async with get_session() as session:

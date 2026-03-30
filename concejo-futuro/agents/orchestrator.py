@@ -116,17 +116,22 @@ class Orchestrator(BaseAgent):
             {"command": "mi_certificado", "description": "Descargar certificado PDF"},
         ]
 
-        # Comandos adicionales para admins
-        admin_commands = user_commands + [
+        # Comandos para admin/dinamizador (NO incluye comandos de concejal)
+        admin_commands = [
+            {"command": "start", "description": "Panel de dinamizador"},
+            {"command": "estado", "description": "Stats del ejercicio"},
             {"command": "fase", "description": "Cambiar fase del ejercicio"},
             {"command": "broadcast", "description": "Mensaje a todos"},
             {"command": "bomba", "description": "Bomba informativa"},
             {"command": "fakenews", "description": "Lanzar fake news"},
+            {"command": "presion", "description": "Presión política"},
             {"command": "ronda", "description": "Iniciar timer (minutos)"},
             {"command": "tweet", "description": "Tweet simulado"},
             {"command": "alerta", "description": "Alerta visual"},
             {"command": "briefing", "description": "Forzar briefing"},
             {"command": "llm", "description": "Cambiar proveedor LLM"},
+            {"command": "pin", "description": "PIN de acceso (4 dígitos)"},
+            {"command": "help", "description": "Ayuda completa"},
         ]
 
         try:
