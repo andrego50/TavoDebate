@@ -44,7 +44,9 @@ Busca **@TavoDebate_bot** (o el nombre que tenga tu bot) en Telegram y envía `/
 
 ### 4. Verificar el geodashboard
 
-Abre en el navegador: `http://192.168.0.221:8085/pantalla`
+Abre en el navegador: `https://pantalla.fastanalytics.co/pantalla`
+
+(Red local: `https://pantalla.fastanalytics.co/pantalla`)
 
 Este es el mapa interactivo que se proyecta en pantalla grande durante el ejercicio. Muestra:
 - Los 30 municipios piloto del SIADR
@@ -97,7 +99,7 @@ docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro -c "
    docker compose logs --tail=3 orchestrator | grep "Uvicorn running"
    ```
 
-3. Abrir geodashboard en la pantalla del proyector: `http://192.168.0.221:8085/pantalla`
+3. Abrir geodashboard en la pantalla del proyector: `https://pantalla.fastanalytics.co/pantalla`
 
 4. Enviar `/estado` en Telegram para confirmar que responde
 
@@ -421,7 +423,7 @@ docker system prune -f    # Limpiar imágenes/contenedores viejos
 3. Verifica que los participantes de prueba recibieron ambos mensajes
 
 ### Prueba 4: Geodashboard
-1. Abre `http://192.168.0.221:8085/pantalla` en pantalla
+1. Abre `https://pantalla.fastanalytics.co/pantalla` en pantalla
 2. Envía `/tweet Prueba de tweet en pantalla`
 3. Verifica que aparece en el dashboard
 
