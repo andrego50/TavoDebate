@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TavoDebate — Geodashboard SIADR Cundinamarca</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+body { font-family:'Inter',sans-serif; background:#0a0e1a; color:#e0e0e0; overflow:hidden; height:100vh; }
+
+/* ─── KPI BAR ─── */
+#kpi-bar {
+  display:flex; justify-content:space-around; align-items:center;
+  background:linear-gradient(135deg,#1a1f3a,#0d1225); padding:10px 20px;
+  border-bottom:2px solid #2a3a6a; height:60px; z-index:1000; position:relative;
+}
+.kpi-item { text-align:center; }
+.kpi-value { font-size:1.4rem; font-weight:800; color:#4fc3f7; }
+.kpi-label { font-size:0.65rem; text-transform:uppercase; letter-spacing:1px; color:#7a8ab5; }
+
+/* ─── MAIN LAYOUT ─── */
+#main { display:flex; height:calc(100vh - 60px); position:relative; }
+#map-container { flex:1; position:relative; }
+#map { width:100%; height:100%; background:#0a0e1a; }
+
+/* ─── LAYER CONTROL ─── */
+#layer-panel {
+  position:absolute; top:10px; left:10px; z-index:1000;
+  background:rgba(13,18,37,0.95); border:1px solid #2a3a6a; border-radius:8px;
+  padding:10px; width:200px; font-size:0.75rem;
+  max-height:80vh; overflow-y:auto;
+}
+#layer-panel h3 { font-size:0.8rem; color:#4fc3f7; margin-bottom:8px; }
+.layer-toggle { display:flex; align-items:center; gap:6px; padding:4px 0; cursor:pointer; }
+.layer-toggle input { accent-color:#4fc3f7; }
+.layer-toggle:hover { color:#4fc3f7; }
+
+/* ─── SIDEBAR ─── */
+#sidebar {
+  width:380px; background:rgba(13,18,37,0.98); border-left:2px solid #2a3a6a;
+  overflow-y:auto; padding:16px; transition:transform 0.3s;
+  display:none;
+}
+#sidebar.open { display:block; }
+#sidebar h2 { color:#4fc3f7; font-size:1.1rem; margin-bottom:4px; }
+#sidebar h3 { color:#7a8ab5; font-size:0.8rem; font-weight:400; }
+.sidebar-section { margin:12px 0; padding:10px; background:rgba(42,58,106,0.3); border-radius:8px; }
+.sidebar-section h4 { font-size:0.75rem; color:#4fc3f7; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.stat-row { display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; }
+.stat-value { font-weight:600; color:#fff; }
+.progress-bar { height:6px; background:#1a1f3a; border-radius:3px; margin:4px 0; }
+.progress-fill { height:100%; border-radius:3px; transition:width 0.5s; }
+#radar-container { width:100%; height:220px; }
+.risk-text { font-size:0.75rem; color:#ff8a65; line-height:1.4; }
+.crono-text { font-size:0.75rem; color:#81c784; }
+.close-sidebar { float:right; background:none; border:none; color:#7a8ab5; font-size:1.2rem; cursor:pointer; }
+.close-sidebar:hover { color:#ff5252; }
+
+/* ─── PONENCIA MODE ─── */
+#ponencia-overlay {
+  display:none; position:absolute; bottom:0; left:0; right:380px;
+  background:linear-gradient(0deg,rgba(13,18,37,0.95) 0%,transparent 100%);
+  padding:20px 30px; z-index:900;
+}
+#ponencia-overlay.active { display:block; }
+.ponencia-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.ponencia-provincia { font-size:1.3rem; font-weight:700; color:#4fc3f7; }
+.ponencia-nav { display:flex; gap:8px; }
+.ponencia-nav button {
+  background:rgba(79,195,247,0.2); border:1px solid #4fc3f7; color:#4fc3f7;
+  padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.85rem;
+}
+.ponencia-nav button:hover { background:#4fc3f7; color:#0a0e1a; }
+.ponencia-progress { height:4px; background:#1a1f3a; border-radius:2px; margin-top:10px; }
+.ponencia-progress-fill { height:100%; background:#4fc3f7; border-radius:2px; transition:width 0.5s; }
+.ponencia-talking-points { font-size:0.8rem; color:#b0bec5; line-height:1.5; margin-top:8px; }
+
+/* ─── VOTING PANEL ─── */
+#voting-panel {
+  display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:2000; background:rgba(13,18,37,0.98); border:2px solid #4fc3f7;
+  border-radius:16px; padding:30px; width:500px; text-align:center;
+}
+#voting-panel.active { display:block; }
+#voting-panel h2 { font-size:1.5rem; color:#4fc3f7; margin-bottom:16px; }
+.vote-bar-container { display:flex; height:50px; border-radius:8px; overflow:hidden; margin:16px 0; }
+.vote-bar-favor { background:linear-gradient(90deg,#4caf50,#66bb6a); display:flex; align-items:center; justify-content:center; transition:width 1s; }
+.vote-bar-contra { background:linear-gradient(90deg,#e53935,#ef5350); display:flex; align-items:center; justify-content:center; transition:width 1s; }
+.vote-bar-abst { background:#455a64; display:flex; align-items:center; justify-content:center; transition:width 1s; }
+.vote-count { font-size:1.2rem; font-weight:800; color:#fff; }
+.vote-label { font-size:0.7rem; color:rgba(255,255,255,0.7); }
+.vote-meta { font-size:0.8rem; color:#7a8ab5; }
+.vote-majority { font-size:0.9rem; color:#ffd54f; margin-top:8px; font-weight:600; }
+.vote-result { font-size:1.8rem; font-weight:800; margin:10px 0; }
+.vote-result.approved { color:#4caf50; }
+.vote-result.rejected { color:#e53935; }
+#bancada-votes { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:12px; }
+.bancada-chip { padding:4px 10px; border-radius:12px; font-size:0.7rem; font-weight:600; }
+
+/* ─── CONTROLS ─── */
+#controls {
+  position:absolute; top:10px; right:10px; z-index:1000;
+  display:flex; flex-direction:column; gap:6px;
+}
+.ctrl-btn {
+  background:rgba(13,18,37,0.9); border:1px solid #2a3a6a; color:#4fc3f7;
+  padding:8px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem;
+  font-family:'Inter',sans-serif; white-space:nowrap;
+}
+.ctrl-btn:hover { background:#4fc3f7; color:#0a0e1a; }
+.ctrl-btn.active { background:#4fc3f7; color:#0a0e1a; }
+
+/* ─── SCORE LEGEND ─── */
+#legend {
+  position:absolute; bottom:20px; left:10px; z-index:1000;
+  background:rgba(13,18,37,0.95); border:1px solid #2a3a6a; border-radius:8px;
+  padding:10px; font-size:0.7rem;
+}
+#legend h4 { color:#4fc3f7; margin-bottom:6px; font-size:0.75rem; }
+.legend-item { display:flex; align-items:center; gap:6px; padding:2px 0; }
+.legend-dot { width:12px; height:12px; border-radius:50%; }
+
+/* ─── TOOLTIP ─── */
+.muni-tooltip { font-family:'Inter',sans-serif!important; font-size:0.8rem!important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:#0a0e1a; }
+::-webkit-scrollbar-thumb { background:#2a3a6a; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<!-- KPI BAR -->
+<div id="kpi-bar">
+  <div class="kpi-item"><div class="kpi-value" id="kpi-municipios">30</div><div class="kpi-label">Municipios Piloto</div></div>
+  <div class="kpi-item"><div class="kpi-value" id="kpi-inversion">$2,400M</div><div class="kpi-label">Inversión Total</div></div>
+  <div class="kpi-item"><div class="kpi-value" id="kpi-luminarias">2,550</div><div class="kpi-label">Luminarias</div></div>
+  <div class="kpi-item"><div class="kpi-value" id="kpi-hectareas">13,500ha</div><div class="kpi-label">Agro-Tech</div></div>
+  <div class="kpi-item"><div class="kpi-value" id="kpi-familias">10,200</div><div class="kpi-label">Familias</div></div>
+  <div class="kpi-item"><div class="kpi-value" id="kpi-iot">90</div><div class="kpi-label">Est. IoT</div></div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="map-container">
+    <div id="map"></div>
+
+    <!-- Layer Panel -->
+    <div id="layer-panel">
+      <h3>Capas del Mapa</h3>
+      <label class="layer-toggle"><input type="checkbox" id="layer-provincias" checked> Provincias</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-piloto" checked> 30 Municipios Piloto</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-no-piloto"> 86 No-Piloto (Fase 2)</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-alumbrado"> Alumbrado Propuesto</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-agro"> Agro Precisión</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-iot"> Estaciones IoT</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-riesgo"> Zonas de Riesgo</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-nbi"> Heatmap NBI</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-votacion"> Votación en Vivo</label>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls">
+      <button class="ctrl-btn" id="btn-ponencia" onclick="togglePonencia()">▶️ Ponencia</button>
+      <button class="ctrl-btn" id="btn-votacion" onclick="toggleVotacion()">🗳️ Votación</button>
+      <button class="ctrl-btn" onclick="resetView()">🏠 Vista Inicial</button>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+      <h4>Score de Priorización</h4>
+      <div class="legend-item"><div class="legend-dot" style="background:#e53935"></div> Bajo (&lt;0.4)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fdd835"></div> Medio (0.4-0.7)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#43a047"></div> Alto (&gt;0.7)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#78909c"></div> No-Piloto (Fase 2)</div>
+    </div>
+
+    <!-- Ponencia Overlay -->
+    <div id="ponencia-overlay">
+      <div class="ponencia-header">
+        <span class="ponencia-provincia" id="ponencia-title">—</span>
+        <div class="ponencia-nav">
+          <button onclick="ponenciaPrev()">← Anterior</button>
+          <button onclick="ponenciaNext()">Siguiente →</button>
+          <button onclick="togglePonencia()">✕ Cerrar</button>
+        </div>
+      </div>
+      <div class="ponencia-talking-points" id="ponencia-points"></div>
+      <div class="ponencia-progress"><div class="ponencia-progress-fill" id="ponencia-progress-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <button class="close-sidebar" onclick="closeSidebar()">✕</button>
+    <h2 id="sb-nombre">—</h2>
+    <h3 id="sb-provincia">—</h3>
+
+    <div class="sidebar-section">
+      <h4>Datos Generales</h4>
+      <div class="stat-row"><span>Población</span><span class="stat-value" id="sb-poblacion">—</span></div>
+      <div class="stat-row"><span>Área</span><span class="stat-value" id="sb-area">—</span></div>
+      <div class="stat-row"><span>% Rural</span><span class="stat-value" id="sb-rural">—</span></div>
+      <div class="stat-row"><span>Veredas</span><span class="stat-value" id="sb-veredas">—</span></div>
+      <div class="stat-row"><span>NBI</span><span class="stat-value" id="sb-nbi">—</span></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>Diagnóstico Actual</h4>
+      <div class="stat-row"><span>Cobertura Alumbrado Rural</span><span class="stat-value" id="sb-alumbrado-val">—</span></div>
+      <div class="progress-bar"><div class="progress-fill" id="sb-alumbrado-bar" style="background:#ff9800;width:0%"></div></div>
+      <div class="stat-row"><span>Internet Rural</span><span class="stat-value" id="sb-internet-val">—</span></div>
+      <div class="progress-bar"><div class="progress-fill" id="sb-internet-bar" style="background:#2196f3;width:0%"></div></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>Propuesta SIADR</h4>
+      <div class="stat-row"><span>Score Priorización</span><span class="stat-value" id="sb-score">—</span></div>
+      <div class="stat-row"><span>Luminarias</span><span class="stat-value" id="sb-luminarias">—</span></div>
+      <div class="stat-row"><span>Hectáreas Agro-Tech</span><span class="stat-value" id="sb-hectareas">—</span></div>
+      <div class="stat-row"><span>Inversión</span><span class="stat-value" id="sb-costo">—</span></div>
+      <div class="stat-row"><span>Familias</span><span class="stat-value" id="sb-familias">—</span></div>
+      <div class="stat-row"><span>Estaciones IoT</span><span class="stat-value" id="sb-iot">—</span></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>Impacto por Dimensión</h4>
+      <div id="radar-container"><canvas id="radar-chart"></canvas></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h4>Riesgos</h4>
+      <div class="risk-text" id="sb-riesgos">—</div>
+    </div>
+    <div class="sidebar-section">
+      <h4>Cronograma</h4>
+      <div class="crono-text" id="sb-crono">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Voting Panel -->
+<div id="voting-panel">
+  <h2 id="vote-title">Votación del Proyecto SIADR</h2>
+  <div class="vote-meta">Mayoría simple: 76 de 150 votos</div>
+  <div class="vote-bar-container" id="vote-bars"></div>
+  <div id="vote-numbers" style="display:flex;justify-content:space-around;margin:8px 0;">
+    <div><span class="vote-count" id="vc-favor" style="color:#4caf50">0</span><br><span class="vote-label">A Favor</span></div>
+    <div><span class="vote-count" id="vc-contra" style="color:#e53935">0</span><br><span class="vote-label">En Contra</span></div>
+    <div><span class="vote-count" id="vc-abst" style="color:#78909c">0</span><br><span class="vote-label">Abstención</span></div>
+  </div>
+  <div class="vote-majority" id="vote-majority">Esperando votos...</div>
+  <div class="vote-result" id="vote-result"></div>
+  <div id="bancada-votes"></div>
+  <div style="margin-top:16px;">
+    <button class="ctrl-btn" onclick="simulateVotes()">⚡ Simular Votación</button>
+    <button class="ctrl-btn" onclick="resetVotes()">🔄 Reiniciar</button>
+    <button class="ctrl-btn" onclick="toggleVotacion()">✕ Cerrar</button>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   DATA
+   ═══════════════════════════════════════════════════════════════ */
+let DATA = null;
+let map, radarChart;
+let layers = {};
+let ponenciaActive = false, ponenciaIdx = 0;
+let votacionActive = false;
+let votes = { favor: 0, contra: 0, abstencion: 0 };
+let votedMunicipios = {};
+
+const BANCADAS = {
+  "Alianza Verde": { color: "#4caf50", concejales: 28 },
+  "Centro Democrático": { color: "#1565c0", concejales: 25 },
+  "Pacto Histórico": { color: "#9c27b0", concejales: 22 },
+  "Partido Liberal": { color: "#e53935", concejales: 25 },
+  "Partido Conservador": { color: "#1a237e", concejales: 25 },
+  "Colombia Humana - UP": { color: "#ff9800", concejales: 25 }
+};
+
+// Province approximate polygons (simplified rectangles around centroids)
+const PROVINCIA_BOUNDS = {};
+
+/* ═══════════════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════════════ */
+async function init() {
+  // Load data
+  try {
+    const resp = await fetch('data/datos_municipales.json');
+    DATA = await resp.json();
+  } catch(e) {
+    console.warn('Loading inline data fallback');
+    DATA = null;
+  }
+
+  if (!DATA) {
+    document.body.innerHTML = '<h1 style="color:#e53935;text-align:center;margin-top:40vh;">Error: No se pudo cargar datos_municipales.json</h1>';
+    return;
+  }
+
+  // Init map
+  map = L.map('map', {
+    center: [4.75, -74.1],
+    zoom: 8,
+    zoomControl: false,
+    attributionControl: false
+  });
+
+  // Base layer - CartoDB Positron dark
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 18,
+    attribution: '&copy; CartoDB'
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  createLayers();
+  bindLayerToggles();
+  updateKPIs();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LAYERS
+   ═══════════════════════════════════════════════════════════════ */
+function scoreColor(score) {
+  if (score >= 0.7) return '#43a047';
+  if (score >= 0.4) return '#fdd835';
+  return '#e53935';
+}
+
+function createLayers() {
+  const munis = DATA.municipios_piloto;
+  const provs = DATA.provincias;
+
+  // Layer: Provincias (circles around centroids to represent province areas)
+  layers.provincias = L.layerGroup();
+  for (const [name, prov] of Object.entries(provs)) {
+    const circle = L.circle(prov.centro, {
+      radius: 18000,
+      color: prov.color,
+      weight: 2,
+      fillColor: prov.color,
+      fillOpacity: 0.08,
+      dashArray: '8,4'
+    });
+    circle.bindTooltip(name, { className: 'muni-tooltip', permanent: false, direction: 'center' });
+    layers.provincias.addLayer(circle);
+  }
+  layers.provincias.addTo(map);
+
+  // Layer: 30 Pilot municipalities
+  layers.piloto = L.layerGroup();
+  munis.forEach(m => {
+    const color = scoreColor(m.score_priorizacion);
+    const marker = L.circleMarker([m.lat, m.lng], {
+      radius: Math.max(6, Math.min(14, m.poblacion / 15000)),
+      color: color,
+      weight: 2,
+      fillColor: color,
+      fillOpacity: 0.7
+    });
+    marker.bindTooltip(`<b>${m.nombre}</b><br>Score: ${m.score_priorizacion}<br>Pop: ${m.poblacion.toLocaleString()}`, {
+      className: 'muni-tooltip'
+    });
+    marker.on('click', () => openSidebar(m));
+    layers.piloto.addLayer(marker);
+  });
+  layers.piloto.addTo(map);
+
+  // Layer: Non-pilot municipalities (simplified - place some markers)
+  layers['no-piloto'] = L.layerGroup();
+  const nonPilotExamples = generateNonPilotMunicipios();
+  nonPilotExamples.forEach(np => {
+    const marker = L.circleMarker([np.lat, np.lng], {
+      radius: 4, color: '#78909c', weight: 1,
+      fillColor: '#78909c', fillOpacity: 0.3
+    });
+    marker.bindTooltip(`${np.nombre} (Fase 2)`, { className: 'muni-tooltip' });
+    layers['no-piloto'].addLayer(marker);
+  });
+
+  // Layer: Alumbrado (lamp markers)
+  layers.alumbrado = L.layerGroup();
+  munis.forEach(m => {
+    if (m.luminarias_propuestas > 80) {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="color:#ffd54f;font-size:16px;text-shadow:0 0 6px #ff8f00;">💡</div>`,
+        iconSize: [20, 20], iconAnchor: [10, 10]
+      });
+      L.marker([m.lat + 0.015, m.lng - 0.01], { icon })
+        .bindTooltip(`${m.nombre}: ${m.luminarias_propuestas} luminarias`)
+        .addTo(layers.alumbrado);
+    }
+  });
+
+  // Layer: Agro precision (shaded areas)
+  layers.agro = L.layerGroup();
+  munis.forEach(m => {
+    if (m.hectareas_agrotech > 300) {
+      L.circle([m.lat - 0.01, m.lng + 0.01], {
+        radius: Math.sqrt(m.hectareas_agrotech) * 50,
+        color: '#66bb6a', weight: 1, fillColor: '#66bb6a', fillOpacity: 0.15,
+        dashArray: '4,4'
+      }).bindTooltip(`${m.nombre}: ${m.hectareas_agrotech}ha agro-tech`)
+        .addTo(layers.agro);
+    }
+  });
+
+  // Layer: IoT stations
+  layers.iot = L.layerGroup();
+  munis.forEach(m => {
+    for (let i = 0; i < m.estaciones_iot; i++) {
+      const offset = (i - 1) * 0.02;
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="color:#00bcd4;font-size:14px;">📡</div>`,
+        iconSize: [16, 16], iconAnchor: [8, 8]
+      });
+      L.marker([m.lat + offset, m.lng + (i % 2 === 0 ? 0.015 : -0.015)], { icon })
+        .bindTooltip(`IoT ${m.nombre} #${i+1}`)
+        .addTo(layers.iot);
+    }
+  });
+
+  // Layer: Risk zones
+  layers.riesgo = L.layerGroup();
+  munis.filter(m => m.nbi > 35).forEach(m => {
+    L.circle([m.lat, m.lng], {
+      radius: 8000, color: '#ff5252', weight: 1,
+      fillColor: '#ff5252', fillOpacity: 0.1, dashArray: '2,6'
+    }).bindTooltip(`⚠️ ${m.nombre} - NBI: ${m.nbi}%`)
+      .addTo(layers.riesgo);
+  });
+
+  // Layer: NBI Heatmap
+  const heatData = munis.map(m => [m.lat, m.lng, m.nbi / 50]);
+  layers.nbi = L.heatLayer(heatData, {
+    radius: 30, blur: 20, maxZoom: 12,
+    gradient: { 0.2: '#2196f3', 0.5: '#fdd835', 0.8: '#ff5252', 1.0: '#b71c1c' }
+  });
+
+  // Layer: Votacion (starts empty, filled during voting sim)
+  layers.votacion = L.layerGroup();
+}
+
+function generateNonPilotMunicipios() {
+  // Generate approximate positions for ~86 non-pilot municipalities
+  const nonPilot = [];
+  const basePositions = [
+    // Spread around Cundinamarca
+    {nombre:"Nemocón",lat:5.069,lng:-73.879},{nombre:"Cogua",lat:5.061,lng:-73.977},
+    {nombre:"Tocancipá",lat:4.964,lng:-73.913},{nombre:"Sopó",lat:4.908,lng:-73.941},
+    {nombre:"Tabio",lat:4.920,lng:-74.098},{nombre:"Tenjo",lat:4.871,lng:-74.145},
+    {nombre:"Cota",lat:4.813,lng:-74.101},{nombre:"Chía",lat:4.863,lng:-74.054},
+    {nombre:"Gachancipá",lat:4.990,lng:-73.872},{nombre:"Sesquilé",lat:5.044,lng:-73.798},
+    {nombre:"Suesca",lat:5.103,lng:-73.798},{nombre:"Cucunubá",lat:5.248,lng:-73.768},
+    {nombre:"Lenguazaque",lat:5.310,lng:-73.712},{nombre:"Guachetá",lat:5.386,lng:-73.687},
+    {nombre:"Fúquene",lat:5.468,lng:-73.792},{nombre:"Susa",lat:5.453,lng:-73.822},
+    {nombre:"Carmen de Carupa",lat:5.353,lng:-73.898},{nombre:"Tausa",lat:5.198,lng:-73.890},
+    {nombre:"Sutatausa",lat:5.248,lng:-73.853},{nombre:"San Cayetano",lat:5.303,lng:-74.063},
+    {nombre:"Nimaima",lat:5.029,lng:-74.387},{nombre:"Nocaima",lat:5.071,lng:-74.382},
+    {nombre:"Vergara",lat:5.117,lng:-74.351},{nombre:"Quebradanegra",lat:5.103,lng:-74.479},
+    {nombre:"Útica",lat:5.188,lng:-74.483},{nombre:"La Peña",lat:5.186,lng:-74.394},
+    {nombre:"Sasaima",lat:4.966,lng:-74.436},{nombre:"Albán",lat:4.878,lng:-74.441},
+    {nombre:"Anolaima",lat:4.764,lng:-74.465},{nombre:"Cachipay",lat:4.734,lng:-74.437},
+    {nombre:"San Antonio del Tequendama",lat:4.621,lng:-74.350},{nombre:"El Colegio",lat:4.583,lng:-74.446},
+    {nombre:"Anapoima",lat:4.552,lng:-74.537},{nombre:"Apulo",lat:4.521,lng:-74.592},
+    {nombre:"Tocaima",lat:4.461,lng:-74.634},{nombre:"Nilo",lat:4.308,lng:-74.620},
+    {nombre:"Ricaurte",lat:4.278,lng:-74.774},{nombre:"Nariño",lat:4.380,lng:-74.830},
+    {nombre:"Guataquí",lat:4.517,lng:-74.794},{nombre:"Jerusalén",lat:4.563,lng:-74.694},
+    {nombre:"Pulí",lat:4.682,lng:-74.613},{nombre:"Beltrán",lat:4.754,lng:-74.745},
+    {nombre:"Chaguaní",lat:4.956,lng:-74.603},{nombre:"Bituima",lat:4.873,lng:-74.542},
+    {nombre:"San Francisco",lat:4.966,lng:-74.286},{nombre:"Supatá",lat:5.061,lng:-74.233},
+    {nombre:"Topaipí",lat:5.338,lng:-74.306},{nombre:"El Peñón",lat:5.263,lng:-74.295},
+    {nombre:"La Palma",lat:5.358,lng:-74.393},{nombre:"Paime",lat:5.376,lng:-74.158},
+    {nombre:"Villagómez",lat:5.290,lng:-74.143},{nombre:"San Bernardo",lat:4.178,lng:-74.424},
+    {nombre:"Pandi",lat:4.191,lng:-74.487},{nombre:"Venecia",lat:4.086,lng:-74.475},
+    {nombre:"Arbeláez",lat:4.272,lng:-74.416},{nombre:"Pasca",lat:4.310,lng:-74.303},
+    {nombre:"Silvania",lat:4.404,lng:-74.388},{nombre:"Tibacuy",lat:4.347,lng:-74.452},
+    {nombre:"Granada",lat:4.520,lng:-74.352},{nombre:"Flandes",lat:4.282,lng:-74.816},
+    {nombre:"Chipaque",lat:4.443,lng:-74.045},{nombre:"Ubaque",lat:4.483,lng:-73.935},
+    {nombre:"Quetame",lat:4.333,lng:-73.863},{nombre:"Gutiérrez",lat:4.247,lng:-73.950},
+    {nombre:"Fosca",lat:4.338,lng:-73.943},{nombre:"Une",lat:4.400,lng:-74.030},
+    {nombre:"Choachí",lat:4.528,lng:-73.923},{nombre:"La Calera",lat:4.720,lng:-73.967},
+    {nombre:"Junín",lat:4.787,lng:-73.672},{nombre:"Gama",lat:4.768,lng:-73.610},
+    {nombre:"Ubalá",lat:4.744,lng:-73.534},{nombre:"Gachalá",lat:4.701,lng:-73.520},
+    {nombre:"Mámbita",lat:4.608,lng:-73.427},{nombre:"Machetá",lat:5.078,lng:-73.608},
+    {nombre:"Manta",lat:5.000,lng:-73.545},{nombre:"Tibirita",lat:5.050,lng:-73.508},
+    {nombre:"Guatavita",lat:4.935,lng:-73.835},{nombre:"Subachoque",lat:4.926,lng:-74.175},
+    {nombre:"El Rosal",lat:4.852,lng:-74.262},{nombre:"Bojacá",lat:4.733,lng:-74.347},
+    {nombre:"Zipacón",lat:4.754,lng:-74.382},{nombre:"San Juan de Ríoseco",lat:4.847,lng:-74.627},
+    {nombre:"Mosquera",lat:4.710,lng:-74.233},{nombre:"Funza",lat:4.717,lng:-74.212},
+    {nombre:"Ricaurte del Magdalena",lat:4.278,lng:-74.775},{nombre:"Tena",lat:4.658,lng:-74.391},
+    {nombre:"Supatá",lat:5.062,lng:-74.234}
+  ];
+  return basePositions;
+}
+
+function bindLayerToggles() {
+  const mapping = {
+    'layer-provincias': 'provincias',
+    'layer-piloto': 'piloto',
+    'layer-no-piloto': 'no-piloto',
+    'layer-alumbrado': 'alumbrado',
+    'layer-agro': 'agro',
+    'layer-iot': 'iot',
+    'layer-riesgo': 'riesgo',
+    'layer-nbi': 'nbi',
+    'layer-votacion': 'votacion'
+  };
+
+  for (const [checkboxId, layerKey] of Object.entries(mapping)) {
+    const cb = document.getElementById(checkboxId);
+    if (!cb) continue;
+    cb.addEventListener('change', () => {
+      if (cb.checked) {
+        if (layers[layerKey]) map.addLayer(layers[layerKey]);
+      } else {
+        if (layers[layerKey]) map.removeLayer(layers[layerKey]);
+      }
+    });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KPI UPDATE
+   ═══════════════════════════════════════════════════════════════ */
+function updateKPIs() {
+  if (!DATA) return;
+  const k = DATA.kpis;
+  animateNumber('kpi-municipios', k.municipios_piloto);
+  document.getElementById('kpi-inversion').textContent = `$${k.inversion_total_millones.toLocaleString()}M`;
+  document.getElementById('kpi-luminarias').textContent = k.luminarias_propuestas.toLocaleString();
+  document.getElementById('kpi-hectareas').textContent = `${k.hectareas_agrotech.toLocaleString()}ha`;
+  document.getElementById('kpi-familias').textContent = k.familias_beneficiadas.toLocaleString();
+  document.getElementById('kpi-iot').textContent = k.estaciones_iot;
+}
+
+function animateNumber(id, target) {
+  const el = document.getElementById(id);
+  let current = 0;
+  const step = Math.ceil(target / 30);
+  const timer = setInterval(() => {
+    current += step;
+    if (current >= target) { current = target; clearInterval(timer); }
+    el.textContent = current;
+  }, 30);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════════════════════════ */
+function openSidebar(m) {
+  const sb = document.getElementById('sidebar');
+  sb.classList.add('open');
+
+  document.getElementById('sb-nombre').textContent = m.nombre;
+  document.getElementById('sb-provincia').textContent = `Provincia de ${m.provincia}`;
+  document.getElementById('sb-poblacion').textContent = m.poblacion.toLocaleString();
+  document.getElementById('sb-area').textContent = `${m.area_km2} km²`;
+  document.getElementById('sb-rural').textContent = `${m.porcentaje_rural}%`;
+  document.getElementById('sb-veredas').textContent = m.veredas;
+  document.getElementById('sb-nbi').textContent = `${m.nbi}%`;
+
+  document.getElementById('sb-alumbrado-val').textContent = `${m.cobertura_alumbrado_rural}%`;
+  document.getElementById('sb-alumbrado-bar').style.width = `${m.cobertura_alumbrado_rural}%`;
+  document.getElementById('sb-internet-val').textContent = `${m.internet_rural}%`;
+  document.getElementById('sb-internet-bar').style.width = `${m.internet_rural}%`;
+
+  document.getElementById('sb-score').textContent = m.score_priorizacion;
+  document.getElementById('sb-score').style.color = scoreColor(m.score_priorizacion);
+  document.getElementById('sb-luminarias').textContent = m.luminarias_propuestas;
+  document.getElementById('sb-hectareas').textContent = `${m.hectareas_agrotech}ha`;
+  document.getElementById('sb-costo').textContent = `$${m.costo_millones}M`;
+  document.getElementById('sb-familias').textContent = m.familias_beneficiadas.toLocaleString();
+  document.getElementById('sb-iot').textContent = m.estaciones_iot;
+
+  document.getElementById('sb-riesgos').textContent = m.riesgos;
+  document.getElementById('sb-crono').textContent = m.cronograma;
+
+  updateRadar(m.impacto);
+  map.flyTo([m.lat, m.lng], 11, { duration: 1 });
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+function updateRadar(impacto) {
+  const ctx = document.getElementById('radar-chart').getContext('2d');
+  if (radarChart) radarChart.destroy();
+
+  radarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: ['Ambiental', 'Social', 'Económico', 'Político', 'Vial'],
+      datasets: [{
+        label: 'Impacto',
+        data: [impacto.ambiental, impacto.social, impacto.economico, impacto.politico, impacto.vial],
+        backgroundColor: 'rgba(79,195,247,0.2)',
+        borderColor: '#4fc3f7',
+        borderWidth: 2,
+        pointBackgroundColor: '#4fc3f7'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          beginAtZero: true, max: 1,
+          ticks: { color: '#7a8ab5', backdropColor: 'transparent', stepSize: 0.25 },
+          grid: { color: 'rgba(42,58,106,0.5)' },
+          angleLines: { color: 'rgba(42,58,106,0.5)' },
+          pointLabels: { color: '#b0bec5', font: { size: 11 } }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PONENCIA MODE
+   ═══════════════════════════════════════════════════════════════ */
+const PONENCIA_ORDER = [
+  'Sabana Centro','Sabana Occidente','Soacha','Sumapaz','Tequendama',
+  'Alto Magdalena','Magdalena Centro','Bajo Magdalena','Gualivá','Rionegro',
+  'Almeidas','Ubaté','Guavio','Oriente','Medina'
+];
+
+const TALKING_POINTS = {
+  'Sabana Centro': 'Zipaquirá y Cajicá: vitrina tecnológica del SIADR. Municipios con mejor infraestructura, ideales para demostrar viabilidad ante escépticos. Inversión baja ($65M) con alto impacto mediático.',
+  'Sabana Occidente': 'Facatativá y Madrid: zona floricultura + agroindustria. Conflictos de uso del suelo presentes. El SIADR puede optimizar la coexistencia entre industria y agricultura familiar.',
+  'Soacha': 'Soacha y Sibaté: el reto urbano-rural. Soacha es piloto simbólico (corregimiento Alto de la Cruz). Sibaté ofrece oportunidad real con 55% rural y el embalse del Muña como zona de monitoreo.',
+  'Sumapaz': 'Fusagasugá y Cabrera: el contraste extremo. Fusagasugá como ciudad intermedia vs. Cabrera con 92% rural y el páramo de Sumapaz. Cabrera es el municipio con mayor score (0.95) pero el más complejo logísticamente.',
+  'Tequendama': 'La Mesa y Viotá: zona cafetera en transición. Viotá con presencia de ENEL y comunidad activa. La Mesa como puente turístico-agrícola. Inversión combinada de $152M.',
+  'Alto Magdalena': 'Girardot y Agua de Dios: tierra caliente. Girardot mayormente urbano pero piloto enfocado en zona del río. Agua de Dios con historia única y necesidad de enfoque comunitario sensible.',
+  'Magdalena Centro': 'San Juan de Rioseco y Vianí: la Cundinamarca olvidada. Despoblamiento rural acelerado. El SIADR puede ser ancla para retener juventud. Score alto (0.88 y 0.91).',
+  'Bajo Magdalena': 'Guaduas y Caparrapí: zona montañosa de alta necesidad. Caparrapí con NBI de 43.8% y score de 0.92. Requiere 10 meses de implementación. La inversión más alta del piloto ($235M combinados).',
+  'Gualivá': 'Villeta y La Vega: región panelera. Monocultivo como riesgo, diversificación como oportunidad. El SIADR permite datos para transición agrícola. Riesgo de deslizamientos en La Vega.',
+  'Rionegro': 'Pacho y Yacopí: zona de conflicto histórico. Yacopí requiere coordinación con Fuerza Pública. Score alto (0.90) pero implementación de 10 meses. Pacho como capital de provincia tiene expectativas altas.',
+  'Almeidas': 'Chocontá y Villapinzón: zona norte ganadera. Villapinzón con problema de curtiembres (contaminación hídrica). El SIADR incluiría monitoreo ambiental. Score combinado alto.',
+  'Ubaté': 'Ubaté y Simijaca: capital lechera de Colombia. Fedegán como aliado clave. Preocupación por costos IoT para pequeños ganaderos. Laguna de Fúquene como zona de monitoreo ambiental.',
+  'Guavio': 'Gachetá y Guasca: zona esmeraldera y páramo de Chingaza. Conflictos sociales latentes en Gachetá. Guasca con presión urbanizadora por cercanía a Bogotá. Ambos con potencial de ecoturismo.',
+  'Oriente': 'Cáqueza y Fómeque: puerta al Llano. La vía al Llano genera dinamismo pero también accidentalidad. Fómeque con restricciones ambientales estrictas (páramo de Chingaza). Inversión combinada $150M.',
+  'Medina': 'Medina y Paratebueno: la frontera llanera. Los más alejados de Bogotá. Paratebueno con score de 0.93 (segundo más alto). Logística extrema: 12 meses de implementación. Zona ganadera extensiva.'
+};
+
+function togglePonencia() {
+  ponenciaActive = !ponenciaActive;
+  const overlay = document.getElementById('ponencia-overlay');
+  const btn = document.getElementById('btn-ponencia');
+  if (ponenciaActive) {
+    overlay.classList.add('active');
+    btn.classList.add('active');
+    ponenciaIdx = 0;
+    showPonenciaSlide();
+  } else {
+    overlay.classList.remove('active');
+    btn.classList.remove('active');
+  }
+}
+
+function showPonenciaSlide() {
+  const prov = PONENCIA_ORDER[ponenciaIdx];
+  document.getElementById('ponencia-title').textContent = `${ponenciaIdx + 1}/${PONENCIA_ORDER.length} — ${prov}`;
+  document.getElementById('ponencia-points').textContent = TALKING_POINTS[prov] || '';
+  document.getElementById('ponencia-progress-fill').style.width = `${((ponenciaIdx + 1) / PONENCIA_ORDER.length) * 100}%`;
+
+  const provData = DATA.provincias[prov];
+  if (provData) {
+    map.flyTo(provData.centro, 10, { duration: 1.5 });
+  }
+}
+
+function ponenciaNext() {
+  if (ponenciaIdx < PONENCIA_ORDER.length - 1) {
+    ponenciaIdx++;
+    showPonenciaSlide();
+  }
+}
+
+function ponenciaPrev() {
+  if (ponenciaIdx > 0) {
+    ponenciaIdx--;
+    showPonenciaSlide();
+  }
+}
+
+// Keyboard nav for ponencia
+document.addEventListener('keydown', e => {
+  if (!ponenciaActive) return;
+  if (e.key === 'ArrowRight') ponenciaNext();
+  if (e.key === 'ArrowLeft') ponenciaPrev();
+  if (e.key === 'Escape') togglePonencia();
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   VOTING
+   ═══════════════════════════════════════════════════════════════ */
+function toggleVotacion() {
+  votacionActive = !votacionActive;
+  const panel = document.getElementById('voting-panel');
+  const btn = document.getElementById('btn-votacion');
+  if (votacionActive) {
+    panel.classList.add('active');
+    btn.classList.add('active');
+    // Enable voting layer
+    document.getElementById('layer-votacion').checked = true;
+    if (layers.votacion) map.addLayer(layers.votacion);
+    updateVoteDisplay();
+  } else {
+    panel.classList.remove('active');
+    btn.classList.remove('active');
+  }
+}
+
+function updateVoteDisplay() {
+  const total = votes.favor + votes.contra + votes.abstencion;
+  const pFavor = total > 0 ? (votes.favor / 150 * 100) : 0;
+  const pContra = total > 0 ? (votes.contra / 150 * 100) : 0;
+  const pAbst = total > 0 ? (votes.abstencion / 150 * 100) : 0;
+
+  const barsEl = document.getElementById('vote-bars');
+  barsEl.innerHTML = `
+    <div class="vote-bar-favor" style="width:${pFavor}%">${votes.favor > 0 ? votes.favor : ''}</div>
+    <div class="vote-bar-contra" style="width:${pContra}%">${votes.contra > 0 ? votes.contra : ''}</div>
+    <div class="vote-bar-abst" style="width:${Math.max(100 - pFavor - pContra, pAbst)}%">${votes.abstencion > 0 ? votes.abstencion : ''}</div>
+  `;
+
+  document.getElementById('vc-favor').textContent = votes.favor;
+  document.getElementById('vc-contra').textContent = votes.contra;
+  document.getElementById('vc-abst').textContent = votes.abstencion;
+
+  const remaining = 150 - total;
+  if (total === 0) {
+    document.getElementById('vote-majority').textContent = 'Esperando votos...';
+    document.getElementById('vote-result').textContent = '';
+  } else if (votes.favor >= 76) {
+    document.getElementById('vote-majority').textContent = '¡MAYORÍA ALCANZADA!';
+    document.getElementById('vote-result').textContent = '✅ PROYECTO APROBADO';
+    document.getElementById('vote-result').className = 'vote-result approved';
+    launchConfetti();
+  } else if (votes.contra >= 76) {
+    document.getElementById('vote-majority').textContent = 'Mayoría en contra alcanzada';
+    document.getElementById('vote-result').textContent = '❌ PROYECTO RECHAZADO';
+    document.getElementById('vote-result').className = 'vote-result rejected';
+  } else {
+    document.getElementById('vote-majority').textContent = `${remaining} votos restantes — Necesitan ${76 - votes.favor} más para aprobar`;
+    document.getElementById('vote-result').textContent = '';
+  }
+
+  // Bancada chips
+  updateBancadaChips();
+}
+
+function updateBancadaChips() {
+  const container = document.getElementById('bancada-votes');
+  container.innerHTML = '';
+  for (const [name, b] of Object.entries(BANCADAS)) {
+    const chip = document.createElement('div');
+    chip.className = 'bancada-chip';
+    chip.style.background = b.color + '33';
+    chip.style.border = `1px solid ${b.color}`;
+    chip.style.color = b.color;
+    const bVotes = b._votes || { f: 0, c: 0, a: 0 };
+    chip.textContent = `${name.split(' ')[0]}: ${bVotes.f}✅ ${bVotes.c}❌`;
+    container.appendChild(chip);
+  }
+}
+
+function simulateVotes() {
+  votes = { favor: 0, contra: 0, abstencion: 0 };
+  layers.votacion.clearLayers();
+  votedMunicipios = {};
+
+  // Reset bancada votes
+  for (const b of Object.values(BANCADAS)) b._votes = { f: 0, c: 0, a: 0 };
+
+  let voteCount = 0;
+  const totalVotes = 150;
+
+  const interval = setInterval(() => {
+    if (voteCount >= totalVotes) {
+      clearInterval(interval);
+      return;
+    }
+
+    // Simulate 3-5 votes at a time
+    const batch = Math.min(3 + Math.floor(Math.random() * 3), totalVotes - voteCount);
+    for (let i = 0; i < batch; i++) {
+      // Random vote: ~55% favor, ~35% contra, ~10% abstención
+      const r = Math.random();
+      let type;
+      if (r < 0.55) { type = 'favor'; votes.favor++; }
+      else if (r < 0.90) { type = 'contra'; votes.contra++; }
+      else { type = 'abstencion'; votes.abstencion++; }
+
+      // Assign to a random bancada
+      const bancadaNames = Object.keys(BANCADAS);
+      const bName = bancadaNames[Math.floor(Math.random() * bancadaNames.length)];
+      const b = BANCADAS[bName];
+      if (!b._votes) b._votes = { f: 0, c: 0, a: 0 };
+      if (type === 'favor') b._votes.f++;
+      else if (type === 'contra') b._votes.c++;
+      else b._votes.a++;
+
+      // Color a random pilot municipality
+      const mIdx = voteCount % DATA.municipios_piloto.length;
+      const m = DATA.municipios_piloto[mIdx];
+      const color = type === 'favor' ? '#4caf50' : type === 'contra' ? '#e53935' : '#78909c';
+
+      if (!votedMunicipios[m.nombre]) {
+        votedMunicipios[m.nombre] = true;
+        L.circle([m.lat, m.lng], {
+          radius: 6000, color: color, weight: 2,
+          fillColor: color, fillOpacity: 0.35
+        }).addTo(layers.votacion);
+      }
+
+      voteCount++;
+    }
+
+    updateVoteDisplay();
+  }, 400);
+}
+
+function resetVotes() {
+  votes = { favor: 0, contra: 0, abstencion: 0 };
+  votedMunicipios = {};
+  for (const b of Object.values(BANCADAS)) b._votes = { f: 0, c: 0, a: 0 };
+  layers.votacion.clearLayers();
+  updateVoteDisplay();
+  document.getElementById('vote-result').textContent = '';
+  document.getElementById('vote-result').className = 'vote-result';
+}
+
+function launchConfetti() {
+  if (typeof confetti === 'function') {
+    confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
+    setTimeout(() => confetti({ particleCount: 100, spread: 120, origin: { y: 0.5 } }), 500);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UTILS
+   ═══════════════════════════════════════════════════════════════ */
+function resetView() {
+  map.flyTo([4.75, -74.1], 8, { duration: 1 });
+  closeSidebar();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WEBSOCKET (connects to TavoDebate Pantalla agent if available)
+   ═══════════════════════════════════════════════════════════════ */
+function connectWS() {
+  try {
+    const ws = new WebSocket(`ws://${location.hostname}:8080/ws`);
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.channel === 'vote:update') {
+        // Live vote update from the bot
+        votes.favor = msg.data.favor || 0;
+        votes.contra = msg.data.contra || 0;
+        votes.abstencion = msg.data.abstencion || 0;
+        updateVoteDisplay();
+      }
+    };
+    ws.onclose = () => setTimeout(connectWS, 5000);
+  } catch(e) {
+    // Standalone mode - no WebSocket needed
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════════════════ */
+init();
+connectWS();
+</script>
+</body>
+</html>

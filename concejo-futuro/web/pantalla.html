@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TavoDebate — Concejo del Futuro</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; color: #e0e0e0; overflow: hidden; height: 100vh; }
+
+/* === HEADER === */
+.header { background: linear-gradient(90deg, #1a2a1a, #0d1b2a); padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2d5016; height: 50px; }
+.header .phase { font-size: 18px; font-weight: bold; color: #7ec850; }
+.header .timer { font-size: 22px; font-weight: bold; font-family: 'Courier New', monospace; }
+.timer.green { color: #4caf50; }
+.timer.yellow { color: #ff9800; }
+.timer.red { color: #f44336; animation: blink 0.5s infinite; }
+@keyframes blink { 50% { opacity: 0.3; } }
+.progress-bar { width: 200px; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+.progress-bar .fill { height: 100%; background: #4caf50; transition: width 1s; }
+
+/* === MAIN GRID === */
+.main { display: grid; grid-template-columns: 30% 30% 40%; height: calc(100vh - 90px); gap: 2px; }
+.main.mode-ponencia { grid-template-columns: 100%; }
+.main.mode-votacion { grid-template-columns: 40% 60%; }
+.main.mode-twitter { grid-template-columns: 60% 40%; }
+.main.mode-crisis { grid-template-columns: 100%; }
+
+/* === PANELS === */
+.panel { background: #111; overflow-y: auto; padding: 10px; }
+.panel::-webkit-scrollbar { width: 4px; }
+.panel::-webkit-scrollbar-thumb { background: #333; }
+.panel-title { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #222; padding-bottom: 5px; }
+
+/* === TWITTER PANEL === */
+.tweet { background: #16181c; border: 1px solid #2f3336; border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+.tweet.reply { margin-left: 30px; border-left: 2px solid #1d9bf0; }
+.tweet-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tweet-avatar { width: 36px; height: 36px; border-radius: 50%; background: #2d2d2d; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.tweet-name { font-weight: bold; font-size: 14px; }
+.tweet-handle { color: #71767b; font-size: 13px; }
+.tweet-verified { color: #1d9bf0; font-size: 12px; }
+.tweet-text { font-size: 14px; line-height: 1.5; margin-bottom: 8px; }
+.tweet-text .hashtag { color: #1d9bf0; }
+.tweet-metrics { display: flex; gap: 20px; color: #71767b; font-size: 12px; }
+.tweet-time { color: #71767b; font-size: 12px; }
+
+/* === NEWS PANEL === */
+.news-item { background: #1a1a1a; border-radius: 8px; padding: 12px; margin-bottom: 8px; border-left: 4px solid #666; }
+.news-item.urgente { border-left-color: #f44336; }
+.news-item.alerta { border-left-color: #ff9800; }
+.news-item.comunicado { border-left-color: #2196f3; }
+.news-badge { font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; margin-bottom: 6px; display: inline-block; }
+.news-badge.urgente { background: #f44336; color: white; }
+.news-badge.alerta { background: #ff9800; color: black; }
+.news-badge.comunicado { background: #2196f3; color: white; }
+.news-source { font-size: 11px; color: #888; margin-bottom: 4px; }
+.news-title { font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+.news-body { font-size: 13px; color: #ccc; line-height: 1.4; }
+
+/* === DASHBOARD PANEL === */
+.kpi-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.kpi { background: #1a2a1a; border: 1px solid #2d5016; border-radius: 8px; padding: 8px 12px; flex: 1; min-width: 80px; text-align: center; }
+.kpi-value { font-size: 20px; font-weight: bold; color: #7ec850; }
+.kpi-label { font-size: 10px; color: #888; text-transform: uppercase; }
+.bancada-bar { margin-bottom: 6px; }
+.bancada-bar .label { font-size: 12px; margin-bottom: 2px; }
+.bancada-bar .bar { height: 20px; background: #222; border-radius: 3px; overflow: hidden; position: relative; }
+.bancada-bar .bar .fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.bancada-bar .bar .count { position: absolute; right: 5px; top: 2px; font-size: 11px; }
+
+/* === VOTE PANEL === */
+.vote-display { text-align: center; padding: 20px; }
+.vote-bar { height: 60px; background: #222; border-radius: 8px; overflow: hidden; display: flex; margin: 20px 0; }
+.vote-bar .favor { background: #4caf50; transition: width 1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; }
+.vote-bar .contra { background: #f44336; transition: width 1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; }
+.vote-bar .abstencion { background: #ff9800; transition: width 1s; }
+
+/* === PROPOSALS === */
+.proposal { background: #1a1a2e; border-radius: 6px; padding: 8px; margin-bottom: 6px; border-left: 3px solid #5c6bc0; }
+.proposal-text { font-size: 12px; }
+.proposal-meta { font-size: 10px; color: #888; margin-top: 4px; }
+
+/* === TICKER === */
+.ticker { background: #1a0000; height: 40px; display: flex; align-items: center; overflow: hidden; border-top: 2px solid #8b0000; }
+.ticker-content { white-space: nowrap; animation: scroll 60s linear infinite; font-size: 14px; color: #ff6b6b; font-weight: bold; }
+@keyframes scroll { 0% { transform: translateX(100vw); } 100% { transform: translateX(-200%); } }
+
+/* === CRISIS MODE === */
+.crisis-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(180, 0, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 1000; display: none; }
+.crisis-overlay.active { display: flex; }
+.crisis-content { text-align: center; max-width: 80%; }
+.crisis-content h1 { font-size: 48px; color: white; margin-bottom: 20px; }
+.crisis-content p { font-size: 24px; color: #fdd; line-height: 1.6; }
+
+/* === LEADERBOARD === */
+.leaderboard-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #222; }
+.lb-rank { font-size: 18px; font-weight: bold; color: #ffd700; width: 30px; }
+.lb-name { flex: 1; font-size: 13px; }
+.lb-score { font-weight: bold; color: #7ec850; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <div class="phase" id="phase">🏛️ TAVODEBATE — CONCEJO DEL FUTURO</div>
+    <div>
+        <span class="timer green" id="timer">00:00</span>
+        <div class="progress-bar"><div class="fill" id="progress" style="width: 0%"></div></div>
+    </div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="main" id="mainGrid">
+    <!-- TWITTER PANEL -->
+    <div class="panel" id="twitterPanel">
+        <div class="panel-title">📱 X / Twitter — #ConcejoDelFuturo</div>
+        <div id="tweetFeed"></div>
+    </div>
+
+    <!-- NEWS PANEL -->
+    <div class="panel" id="newsPanel">
+        <div class="panel-title">📺 Noticias y Alertas</div>
+        <div id="newsFeed"></div>
+    </div>
+
+    <!-- DASHBOARD PANEL -->
+    <div class="panel" id="dashPanel">
+        <div class="panel-title">📊 Dashboard en Vivo</div>
+        <div class="kpi-row" id="kpis">
+            <div class="kpi"><div class="kpi-value" id="kpi-users">0</div><div class="kpi-label">Concejales</div></div>
+            <div class="kpi"><div class="kpi-value" id="kpi-queries">0</div><div class="kpi-label">Consultas</div></div>
+            <div class="kpi"><div class="kpi-value" id="kpi-proposals">0</div><div class="kpi-label">Propuestas</div></div>
+        </div>
+
+        <!-- Bancada positions -->
+        <div id="bancadaBars"></div>
+
+        <!-- Vote display (hidden until voting) -->
+        <div id="voteDisplay" style="display:none">
+            <h3 style="text-align:center; margin: 10px 0;">🗳️ VOTACIÓN EN VIVO</h3>
+            <div class="vote-bar" id="voteBar">
+                <div class="favor" id="voteFavor" style="width:50%">0</div>
+                <div class="contra" id="voteContra" style="width:50%">0</div>
+            </div>
+        </div>
+
+        <!-- Top proposals -->
+        <div id="proposalsList"></div>
+    </div>
+</div>
+
+<!-- TICKER -->
+<div class="ticker">
+    <div class="ticker-content" id="tickerContent">
+        ━━ Bienvenidos al Gran Concejo del Futuro — TavoDebate ━━ 150 concejales de Cundinamarca debaten el proyecto SIADR ━━
+    </div>
+</div>
+
+<!-- CRISIS OVERLAY -->
+<div class="crisis-overlay" id="crisisOverlay">
+    <div class="crisis-content">
+        <h1 id="crisisTitle"></h1>
+        <p id="crisisBody"></p>
+    </div>
+</div>
+
+<script>
+// === WebSocket Connection ===
+const WS_URL = `ws://${window.location.hostname}:8080/ws`;
+let ws;
+let tickerItems = [];
+let tweetCount = 0;
+let voteData = { favor: 0, contra: 0, abstencion: 0 };
+
+function connectWS() {
+    ws = new WebSocket(WS_URL);
+    ws.onopen = () => console.log('WS connected');
+    ws.onclose = () => setTimeout(connectWS, 2000);
+    ws.onerror = () => ws.close();
+    ws.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+        handleEvent(event.channel, event.data);
+    };
+}
+
+function handleEvent(channel, data) {
+    switch(channel) {
+        case 'tweet:new': addTweet(data); break;
+        case 'broadcast:sent': addNews('comunicado', 'Sistema', data.message); break;
+        case 'bomb:sent': addNews('urgente', 'DATO BOMBA', data.text); addTicker(data.text); break;
+        case 'fakenews:sent': addNews('comunicado', 'ÚLTIMA HORA', data.text); break;
+        case 'alert:sent': addNews('urgente', data.type || 'ALERTA', data.message); break;
+        case 'pressure:sent': addNews('alerta', data.type || 'PRESIÓN', data.message); addTicker(data.message); break;
+        case 'timer:update': updateTimer(data); break;
+        case 'vote:cast': updateVote(data); break;
+        case 'proposal:new': addProposal(data); break;
+        case 'position:changed': addTicker(`${data.bancada_id ? 'Bancada '+data.bancada_id : ''}: cambio de ${data.old_position} a ${data.new_position}`); break;
+        case 'layout:change': changeLayout(data.phase || data.mode || 'normal'); break;
+        case 'leaderboard:update': updateLeaderboard(data); break;
+        case 'gabinete:event': addNews('urgente', 'GABINETE', JSON.stringify(data.details)); break;
+        case 'ponencia:analyzed': addTicker(`Ponencia analizada: ${data.transcript?.substring(0,80) || '...'}`); break;
+    }
+}
+
+// === Tweet Functions ===
+function addTweet(data) {
+    const feed = document.getElementById('tweetFeed');
+    const isReply = data.reply_to ? true : false;
+    const verified = data.verified ? '<span class="tweet-verified">✓</span>' : '';
+    const avatar = data.author?.charAt(0) || '?';
+
+    const el = document.createElement('div');
+    el.className = `tweet ${isReply ? 'reply' : ''}`;
+    el.innerHTML = `
+        <div class="tweet-header">
+            <div class="tweet-avatar">${avatar}</div>
+            <div>
+                <span class="tweet-name">${data.author || 'Anon'}</span> ${verified}
+                <span class="tweet-handle">${data.handle || ''}</span>
+            </div>
+        </div>
+        <div class="tweet-text">${formatTweet(data.text || '')}</div>
+        <div class="tweet-metrics">
+            <span>❤️ <span class="likes">${Math.floor(Math.random()*50)}</span></span>
+            <span>🔄 <span class="rts">${Math.floor(Math.random()*20)}</span></span>
+            <span>💬 ${Math.floor(Math.random()*10)}</span>
+        </div>
+        <div class="tweet-time">hace un momento</div>
+    `;
+    el.style.opacity = '0';
+    feed.insertBefore(el, feed.firstChild);
+    setTimeout(() => el.style.opacity = '1', 50);
+    el.style.transition = 'opacity 0.5s';
+
+    // Animate metrics
+    if (data.viral) {
+        const likesEl = el.querySelector('.likes');
+        const rtsEl = el.querySelector('.rts');
+        let likes = 50, rts = 20;
+        setInterval(() => {
+            likes += Math.floor(Math.random()*5);
+            rts += Math.floor(Math.random()*3);
+            likesEl.textContent = likes;
+            rtsEl.textContent = rts;
+        }, 3000);
+    }
+}
+
+function formatTweet(text) {
+    return text.replace(/#(\w+)/g, '<span class="hashtag">#$1</span>')
+               .replace(/@(\w+)/g, '<span class="hashtag">@$1</span>');
+}
+
+// === News Functions ===
+function addNews(level, source, text) {
+    const feed = document.getElementById('newsFeed');
+    const el = document.createElement('div');
+    el.className = `news-item ${level}`;
+    el.innerHTML = `
+        <span class="news-badge ${level}">${level === 'urgente' ? '🔴 ÚLTIMA HORA' : level === 'alerta' ? '🟡 ALERTA' : '🔵 COMUNICADO'}</span>
+        <div class="news-source">${source}</div>
+        <div class="news-body">${text}</div>
+    `;
+    feed.insertBefore(el, feed.firstChild);
+}
+
+// === Timer ===
+function updateTimer(data) {
+    const el = document.getElementById('timer');
+    const progress = document.getElementById('progress');
+    const phase = document.getElementById('phase');
+
+    const mins = Math.floor(data.remaining_seconds / 60);
+    const secs = Math.floor(data.remaining_seconds % 60);
+    el.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+
+    const pct = data.total_seconds > 0 ? ((data.total_seconds - data.remaining_seconds) / data.total_seconds * 100) : 0;
+    progress.style.width = `${pct}%`;
+
+    el.className = 'timer ' + (pct > 80 ? 'red' : pct > 50 ? 'yellow' : 'green');
+    if (data.phase) phase.textContent = `🏛️ ${data.phase}`;
+}
+
+// === Vote ===
+function updateVote(data) {
+    document.getElementById('voteDisplay').style.display = 'block';
+    if (data.vote === 'si') voteData.favor++;
+    else if (data.vote === 'no') voteData.contra++;
+    else voteData.abstencion++;
+
+    const total = voteData.favor + voteData.contra + voteData.abstencion || 1;
+    document.getElementById('voteFavor').style.width = `${voteData.favor/total*100}%`;
+    document.getElementById('voteFavor').textContent = `✅ ${voteData.favor}`;
+    document.getElementById('voteContra').style.width = `${voteData.contra/total*100}%`;
+    document.getElementById('voteContra').textContent = `❌ ${voteData.contra}`;
+}
+
+// === Proposals ===
+function addProposal(data) {
+    const list = document.getElementById('proposalsList');
+    const el = document.createElement('div');
+    el.className = 'proposal';
+    el.innerHTML = `
+        <div class="proposal-text">${data.resumen || data.text || ''}</div>
+        <div class="proposal-meta">${data.bancada_nombre || ''} — ${data.nombre_concejal || ''} — Art. ${data.articulo || '?'}</div>
+    `;
+    list.insertBefore(el, list.firstChild);
+    if (list.children.length > 5) list.removeChild(list.lastChild);
+}
+
+// === Ticker ===
+function addTicker(text) {
+    tickerItems.push(text);
+    if (tickerItems.length > 20) tickerItems.shift();
+    document.getElementById('tickerContent').textContent = tickerItems.join(' ━━ ');
+}
+
+// === Layout ===
+function changeLayout(mode) {
+    const grid = document.getElementById('mainGrid');
+    grid.className = 'main';
+    const crisis = document.getElementById('crisisOverlay');
+    crisis.classList.remove('active');
+
+    switch(mode) {
+        case 'ponencia': grid.classList.add('mode-ponencia'); break;
+        case 'votacion': grid.classList.add('mode-votacion'); break;
+        case 'twitter': grid.classList.add('mode-twitter'); break;
+        case 'crisis':
+            crisis.classList.add('active');
+            setTimeout(() => crisis.classList.remove('active'), 15000);
+            break;
+        case 'oscura':
+            document.body.style.background = '#000';
+            grid.style.display = 'none';
+            break;
+        default:
+            document.body.style.background = '#0a0a0a';
+            grid.style.display = 'grid';
+    }
+}
+
+// === Leaderboard ===
+function updateLeaderboard(data) {
+    // Could show in dashboard panel
+}
+
+// === Init ===
+connectWS();
+</script>
+</body>
+</html>

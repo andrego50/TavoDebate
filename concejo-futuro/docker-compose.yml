@@ -1,0 +1,115 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: concejo_futuro
+      POSTGRES_USER: concejo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U concejo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: orchestrator
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      - ./media:/app/media
+      - ./backups:/app/backups
+
+  agent-chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: chat
+    depends_on:
+      - orchestrator
+    deploy:
+      replicas: 2
+
+  agent-intel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: intel
+    depends_on:
+      - orchestrator
+
+  agent-control:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: control
+    depends_on:
+      - orchestrator
+    volumes:
+      - ./media:/app/media
+
+  agent-pantalla:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: pantalla
+    ports:
+      - "8080:8080"
+    depends_on:
+      - orchestrator
+
+  agent-audio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: audio
+    depends_on:
+      - orchestrator
+    volumes:
+      - audio_cache:/app/audio_cache
+
+  agent-simulation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: simulation
+    depends_on:
+      - orchestrator
+
+volumes:
+  postgres_data:
+  audio_cache:
