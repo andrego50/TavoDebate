@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     briefing_interval_seconds: int = 120
     environment: str = "dev"
     vps_domain: str = "localhost"
+    telegram_webhook_url: str = ""
 
     # Agent
     agent_type: str = "orchestrator"
