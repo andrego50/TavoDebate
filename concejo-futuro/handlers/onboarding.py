@@ -3,7 +3,7 @@
 import json
 import logging
 
-from core.config import BANCADAS, PROVINCIAS_MUNICIPIOS, get_provincia_for_municipio
+from core.config import BANCADAS, PROVINCIAS_MUNICIPIOS, get_provincia_for_municipio, settings
 from core.dossiers import get_dossier
 from core.gabinete import format_power_map
 from core.voices import get_voice_selection_text
@@ -40,6 +40,61 @@ FASES = {
 
 async def handle_start(agent, user_id: int, chat_id: int, username: str, first_name: str):
     """Inicia el onboarding o muestra perfil si ya está registrado."""
+    # Admin/dinamizador: skip onboarding entirely
+    if user_id in settings.admin_ids:
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("SELECT * FROM users WHERE telegram_id = :tid"),
+                {"tid": user_id},
+            )
+            user = result.mappings().first()
+            if not user:
+                await session.execute(
+                    sql_text(
+                        "INSERT INTO users (telegram_id, username, nombre_completo, municipio, "
+                        "provincia, bancada_id, bancada_nombre, onboarding_step, onboarding_complete) "
+                        "VALUES (:tid, :un, :name, 'Cundinamarca', 'Admin', 0, 'Dinamizador', "
+                        "0, true) "
+                        "ON CONFLICT (telegram_id) DO UPDATE SET onboarding_complete = true, "
+                        "onboarding_step = 0"
+                    ),
+                    {"tid": user_id, "un": username or "", "name": first_name or "Admin"},
+                )
+            else:
+                await session.execute(
+                    sql_text(
+                        "UPDATE users SET onboarding_complete = true, onboarding_step = 0 "
+                        "WHERE telegram_id = :tid"
+                    ),
+                    {"tid": user_id},
+                )
+
+        msg = (
+            "*Panel de Dinamizador — TavoDebate*\n\n"
+            "Eres el administrador del ejercicio. Comandos disponibles:\n\n"
+            "*Fases:*\n"
+            "/fase registro — Abrir registro\n"
+            "/fase ponencia\\_alcalde — Iniciar ponencia\n"
+            "/fase debate — Abrir debate\n"
+            "/fase votacion — Abrir votación\n\n"
+            "*Control:*\n"
+            "/broadcast <msg> — Mensaje a todos\n"
+            "/bomba <msg> — Bomba informativa\n"
+            "/fakenews <msg> — Fake news\n"
+            "/ronda <min> — Timer de N minutos\n"
+            "/tweet <texto> — Tweet simulado\n"
+            "/alerta <msg> — Alerta visual\n\n"
+            "*Info:*\n"
+            "/estado — Status del ejercicio\n"
+            "/llm deepseek|kimi — Cambiar LLM\n"
+            "/modo\\_test — Toggle modo pruebas\n"
+            "/briefing — Forzar briefing\n"
+            "/help — Ayuda completa"
+        )
+        await agent._send_response(chat_id, msg)
+        return
+
     async with get_session() as session:
         from sqlalchemy import text as sql_text
         result = await session.execute(
@@ -222,6 +277,14 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
         })
 
+    elif step in (2, 3):
+        # Steps 2 & 3 expect inline button callbacks, not text
+        await agent._send_response(
+            chat_id,
+            "Por favor usa los botones de arriba para seleccionar tu opción. "
+            "Si no los ves, envía /start para reiniciar el registro."
+        )
+
     elif step == 4:
         # Step 4: Classify interests with LLM
         await agent._send_response(chat_id, "Clasificando tus intereses...")
@@ -242,18 +305,23 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
 
         async with get_session() as session:
             from sqlalchemy import text as sql_text
+            # Convert lists to PostgreSQL array literal format
+            temas_pg = "{" + ",".join(temas) + "}" if temas else "{}"
+            kw_pg = "{" + ",".join(keywords) + "}" if keywords else "{}"
             await session.execute(
                 sql_text(
-                    "UPDATE users SET intereses_raw = :raw, temas_interes = :temas, "
-                    "intereses_keywords = :kw, intereses_resumen = :res, "
+                    "UPDATE users SET intereses_raw = :raw, "
+                    "temas_interes = CAST(:temas AS text[]), "
+                    "intereses_keywords = CAST(:kw AS text[]), "
+                    "intereses_resumen = :res, "
                     "onboarding_complete = true, onboarding_step = 0, "
                     "posicion_inicial = :pos "
                     "WHERE telegram_id = :tid"
                 ),
                 {
                     "raw": text,
-                    "temas": temas,
-                    "kw": keywords,
+                    "temas": temas_pg,
+                    "kw": kw_pg,
                     "res": resumen,
                     "pos": "neutral",
                     "tid": user_id,
