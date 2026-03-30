@@ -97,6 +97,13 @@ class ChatAgent(BaseAgent):
             await process_onboarding_text(self, user_id, chat_id, text)
             return
 
+        # Admin natural language → try to interpret as command
+        if user_id in settings.admin_ids:
+            interpreted = await self._interpret_admin_nl(text)
+            if interpreted:
+                await self._handle_command(user_id, chat_id, interpreted, "", "Admin")
+                return
+
         # Regular message - generate response
         await self._handle_message(user_id, chat_id, text)
 
@@ -354,6 +361,10 @@ class ChatAgent(BaseAgent):
         elif data.startswith("onboard_"):
             from handlers.onboarding import handle_onboard_callback
             await handle_onboard_callback(self, user_id, chat_id, data, callback_id)
+        elif data.startswith(("preview_", "send_", "cancel_")):
+            if user_id in settings.admin_ids:
+                from handlers.admin_handlers import handle_admin_callback
+                await handle_admin_callback(self, user_id, chat_id, data, callback_id)
         elif data.startswith("fase_"):
             if user_id in settings.admin_ids:
                 fase_key = data.split("_", 1)[1]
@@ -370,6 +381,47 @@ class ChatAgent(BaseAgent):
                     await self._send_response(chat_id, summary)
                     from handlers.admin_handlers import _execute_phase_actions
                     await _execute_phase_actions(self, fase_key, chat_id)
+
+    async def _interpret_admin_nl(self, text: str) -> str | None:
+        """Interpreta texto natural del admin como comando.
+        Returns the command string (e.g. '/bomba') or None if not a command."""
+        t = text.lower().strip()
+
+        # Quick keyword matching (no LLM needed)
+        keyword_map = [
+            (["bomba", "dato bomba", "lanza bomba", "enviar bomba"], "/bomba"),
+            (["fake", "fakenews", "noticia falsa", "lanzar fake"], "/fakenews"),
+            (["tweet", "tuit", "publicar tweet", "twit"], "/tweet"),
+            (["fase", "cambiar fase", "pasar a", "siguiente fase"], "/fase"),
+            (["estado", "estadísticas", "stats", "cómo va", "como va", "cuántos", "cuantos"], "/estado"),
+            (["broadcast", "mensaje a todos", "enviar a todos", "comunicado"], "/broadcast"),
+            (["ronda", "timer", "temporizador", "cronómetro", "minutos"], "/ronda"),
+            (["votación", "votacion", "abrir votación", "votar"], "/fase votacion"),
+            (["presión", "presion", "amenaza", "presionar"], "/presion"),
+            (["alerta", "alertar"], "/alerta"),
+            (["pantalla", "modo pantalla", "cambiar pantalla"], "/pantalla"),
+            (["ayuda", "help", "comandos", "qué puedo hacer", "que puedo hacer"], "/help"),
+        ]
+
+        for keywords, cmd in keyword_map:
+            for kw in keywords:
+                if kw in t:
+                    # Extract remaining text after keyword as args
+                    rest = t
+                    for kw2 in keywords:
+                        rest = rest.replace(kw2, "").strip()
+                    # Handle specific patterns
+                    if cmd == "/bomba" and not rest:
+                        return "/bomba"
+                    if cmd == "/fakenews" and not rest:
+                        return "/fakenews"
+                    if cmd == "/tweet" and not rest:
+                        return "/tweet"
+                    if rest:
+                        return f"{cmd} {rest}"
+                    return cmd
+
+        return None
 
     async def _send_response(self, chat_id: int, text: str, parse_mode: str = "Markdown"):
         """Envía respuesta al usuario via telegram:outgoing stream."""

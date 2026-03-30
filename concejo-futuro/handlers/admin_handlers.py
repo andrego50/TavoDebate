@@ -21,28 +21,78 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         await agent._send_response(chat_id, "Broadcast enviado.")
 
     elif cmd == "bomba":
+        from core.bombs import BOMBS
+        if not args.strip():
+            # Show bomb menu
+            keyboard = []
+            for bid, bomb in BOMBS.items():
+                # First 60 chars as label
+                label = bomb["text"].replace("*", "").replace("🔴 ", "")[:55]
+                keyboard.append([{"text": f"💣 {bid}. {label}…", "callback_data": f"preview_bomb_{bid}"}])
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "💣 *Selecciona una bomba informativa:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+            return
         try:
             bomb_id = int(args.strip())
         except ValueError:
-            await agent._send_response(chat_id, "Uso: /bomba <1-8>")
+            await agent._send_response(chat_id, "Uso: /bomba o /bomba <1-8>")
             return
-        await agent.bus.publish("control:command", {
-            "action": "bomb",
-            "args": {"bomb_id": bomb_id},
+        # Show preview with confirm button
+        bomb = BOMBS.get(bomb_id)
+        if not bomb:
+            await agent._send_response(chat_id, f"Bomba #{bomb_id} no existe (1-8).")
+            return
+        preview = bomb["text"][:500].replace("*", "")
+        keyboard = json.dumps({"inline_keyboard": [
+            [{"text": "✅ Enviar", "callback_data": f"send_bomb_{bomb_id}"},
+             {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+        ]})
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": f"💣 *Preview Bomba #{bomb_id}:*\n\n{preview}\n\n_Se enviará a todos los concejales + pantalla._",
+            "parse_mode": "Markdown",
+            "reply_markup": keyboard,
         })
-        await agent._send_response(chat_id, f"Bomba #{bomb_id} enviada.")
 
     elif cmd == "fakenews":
+        from core.fakenews import FAKE_NEWS
+        if not args.strip():
+            # Show fakenews menu
+            keyboard = []
+            for nid, news in FAKE_NEWS.items():
+                label = news["text"].replace("*", "").replace("📰 ", "")[:55]
+                keyboard.append([{"text": f"📰 {nid}. {label}…", "callback_data": f"preview_fn_{nid}"}])
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "📰 *Selecciona una fake news:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+            return
         try:
             news_id = int(args.strip())
         except ValueError:
-            await agent._send_response(chat_id, "Uso: /fakenews <1-6>")
+            await agent._send_response(chat_id, "Uso: /fakenews o /fakenews <1-6>")
             return
-        await agent.bus.publish("control:command", {
-            "action": "fakenews",
-            "args": {"news_id": news_id},
+        news = FAKE_NEWS.get(news_id)
+        if not news:
+            await agent._send_response(chat_id, f"Fake news #{news_id} no existe (1-6).")
+            return
+        preview = news["text"][:500].replace("*", "")
+        keyboard = json.dumps({"inline_keyboard": [
+            [{"text": "✅ Enviar", "callback_data": f"send_fn_{news_id}"},
+             {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+        ]})
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": f"📰 *Preview Fake News #{news_id}:*\n\n{preview}\n\n_Se enviará a todos los concejales + pantalla._",
+            "parse_mode": "Markdown",
+            "reply_markup": keyboard,
         })
-        await agent._send_response(chat_id, f"Fake news #{news_id} enviada.")
 
     elif cmd == "presion":
         # /presion <tipo> <tema> <actor> <mensaje>
@@ -138,6 +188,40 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         await agent._send_response(chat_id, f"Timer de {minutes} min iniciado.")
 
     elif cmd == "tweet":
+        from core.tweets import TIMELINE_TWEETS
+        if not args.strip():
+            # Show tweet menu
+            keyboard = []
+            for tid, tw in TIMELINE_TWEETS.items():
+                label = tw["text"][:50]
+                keyboard.append([{"text": f"🐦 {tid}. {label}…", "callback_data": f"preview_tweet_{tid}"}])
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "🐦 *Selecciona un tweet o escribe /tweet <texto>:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+            return
+        # Check if it's a number (predefined tweet)
+        try:
+            tweet_id = int(args.strip())
+            tw = TIMELINE_TWEETS.get(tweet_id)
+            if tw:
+                preview = tw["text"][:300]
+                keyboard = json.dumps({"inline_keyboard": [
+                    [{"text": "✅ Publicar", "callback_data": f"send_tweet_{tweet_id}"},
+                     {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+                ]})
+                await agent.bus.stream_add("telegram:outgoing", {
+                    "chat_id": str(chat_id),
+                    "text": f"🐦 *Preview Tweet #{tweet_id}:*\n\n*{tw['author']}*\n{preview}\n\n_Se publicará en pantalla._",
+                    "parse_mode": "Markdown",
+                    "reply_markup": keyboard,
+                })
+                return
+        except ValueError:
+            pass
+        # Free text tweet
         await agent.bus.publish("tweet:new", {
             "author": "@ConcejoCund",
             "text": args,
@@ -191,6 +275,99 @@ async def handle_approval_callback(agent, user_id: int, chat_id: int, data: str,
         await agent._send_response(chat_id, f"Propuesta #{proposal_idx} aprobada. Ejecutando...")
     elif action == "no":
         await agent._send_response(chat_id, f"Propuesta #{proposal_idx} rechazada.")
+
+
+async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, callback_id: str):
+    """Procesa callbacks de preview/send/cancel de bombas, fakenews, tweets."""
+    if data == "cancel_action":
+        await agent._send_response(chat_id, "Acción cancelada.")
+        return
+
+    # Preview callbacks: show full content + confirm button
+    if data.startswith("preview_bomb_"):
+        bomb_id = int(data.split("_")[-1])
+        from core.bombs import BOMBS
+        bomb = BOMBS.get(bomb_id)
+        if bomb:
+            preview = bomb["text"].replace("*", "")[:500]
+            keyboard = json.dumps({"inline_keyboard": [
+                [{"text": "✅ Enviar", "callback_data": f"send_bomb_{bomb_id}"},
+                 {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+            ]})
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": f"💣 *Preview Bomba #{bomb_id}:*\n\n{preview}\n\n_Se enviará a todos + pantalla con tweets de reacción._",
+                "parse_mode": "Markdown",
+                "reply_markup": keyboard,
+            })
+        return
+
+    if data.startswith("preview_fn_"):
+        news_id = int(data.split("_")[-1])
+        from core.fakenews import FAKE_NEWS
+        news = FAKE_NEWS.get(news_id)
+        if news:
+            preview = news["text"].replace("*", "")[:500]
+            keyboard = json.dumps({"inline_keyboard": [
+                [{"text": "✅ Enviar", "callback_data": f"send_fn_{news_id}"},
+                 {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+            ]})
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": f"📰 *Preview Fake News #{news_id}:*\n\n{preview}\n\n_Se enviará a todos + pantalla con tweets de reacción._",
+                "parse_mode": "Markdown",
+                "reply_markup": keyboard,
+            })
+        return
+
+    if data.startswith("preview_tweet_"):
+        tweet_id = int(data.split("_")[-1])
+        from core.tweets import TIMELINE_TWEETS
+        tw = TIMELINE_TWEETS.get(tweet_id)
+        if tw:
+            keyboard = json.dumps({"inline_keyboard": [
+                [{"text": "✅ Publicar", "callback_data": f"send_tweet_{tweet_id}"},
+                 {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+            ]})
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": f"🐦 *Preview Tweet #{tweet_id}:*\n\n*{tw['author']}*\n{tw['text']}\n\n_Se publicará en pantalla._",
+                "parse_mode": "Markdown",
+                "reply_markup": keyboard,
+            })
+        return
+
+    # Send callbacks: execute the action
+    if data.startswith("send_bomb_"):
+        bomb_id = int(data.split("_")[-1])
+        await agent.bus.publish("control:command", {
+            "action": "bomb",
+            "args": {"bomb_id": bomb_id},
+        })
+        await agent._send_response(chat_id, f"💣 Bomba #{bomb_id} enviada a todos los concejales + pantalla.")
+        return
+
+    if data.startswith("send_fn_"):
+        news_id = int(data.split("_")[-1])
+        await agent.bus.publish("control:command", {
+            "action": "fakenews",
+            "args": {"news_id": news_id},
+        })
+        await agent._send_response(chat_id, f"📰 Fake news #{news_id} enviada a todos los concejales + pantalla.")
+        return
+
+    if data.startswith("send_tweet_"):
+        tweet_id = int(data.split("_")[-1])
+        from core.tweets import TIMELINE_TWEETS
+        tw = TIMELINE_TWEETS.get(tweet_id)
+        if tw:
+            await agent.bus.publish("tweet:new", {
+                "author": tw["author"],
+                "text": tw["text"],
+                "is_manual": True,
+            })
+            await agent._send_response(chat_id, f"🐦 Tweet #{tweet_id} publicado en pantalla.")
+        return
 
 
 async def _create_test_users(agent, chat_id: int):

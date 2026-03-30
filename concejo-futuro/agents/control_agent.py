@@ -158,6 +158,16 @@ class ControlAgent(BaseAgent):
             "timestamp": datetime.now().isoformat(),
         })
 
+        # Auto-publish reaction tweets
+        from core.tweets import BOMB_TWEETS
+        for tweet in BOMB_TWEETS.get(bomb_id, []):
+            await asyncio.sleep(2)
+            await self.bus.publish("tweet:new", {
+                "author": tweet["author"],
+                "text": tweet["text"],
+                "is_reaction": True,
+            })
+
     async def _execute_fakenews(self, args: dict):
         """Envía fake news."""
         news_id = args.get("news_id", 1)
@@ -184,6 +194,16 @@ class ControlAgent(BaseAgent):
             "is_fake": news.get("is_fake", True),
             "timestamp": datetime.now().isoformat(),
         })
+
+        # Auto-publish reaction tweets
+        from core.tweets import FAKENEWS_TWEETS
+        for tweet in FAKENEWS_TWEETS.get(news_id, []):
+            await asyncio.sleep(2)
+            await self.bus.publish("tweet:new", {
+                "author": tweet["author"],
+                "text": tweet["text"],
+                "is_reaction": True,
+            })
 
     async def _execute_pressure(self, args: dict):
         """Ejecuta presión estructurada."""
