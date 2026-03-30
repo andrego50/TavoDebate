@@ -83,7 +83,11 @@ class IntelAgent(BaseAgent):
         )
 
         try:
-            classification = json.loads(classification_text)
+            # Strip markdown code fences that LLMs sometimes add
+            import re
+            clean = re.sub(r'^```(?:json)?\s*', '', classification_text.strip())
+            clean = re.sub(r'\s*```$', '', clean)
+            classification = json.loads(clean)
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse classification: {classification_text[:200]}")
             return
@@ -241,7 +245,9 @@ class IntelAgent(BaseAgent):
         )
 
         try:
-            proposals = json.loads(proposal_text)
+            clean_prop = re.sub(r'^```(?:json)?\s*', '', proposal_text.strip())
+            clean_prop = re.sub(r'\s*```$', '', clean_prop)
+            proposals = json.loads(clean_prop)
             await self.bus.publish("proposal:proactive", {
                 "proposals": proposals,
                 "timestamp": datetime.now().isoformat(),

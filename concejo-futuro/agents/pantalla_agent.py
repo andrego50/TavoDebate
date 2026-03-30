@@ -87,6 +87,7 @@ class PantallaAgent(BaseAgent):
 
     async def _broadcast_ws(self, event: dict):
         """Envía evento a todos los WebSocket clients."""
+        global ws_clients
         dead = set()
         for ws in ws_clients:
             try:
