@@ -186,6 +186,20 @@ class ChatAgent(BaseAgent):
             response = re.sub(r'<<<[^>]+>>>', '', response).strip()
             response = re.sub(r'\{[^}]*"tipo_alerta"[^}]*\}', '', response).strip()
 
+            # Append map links for any mentioned municipalities
+            from core.config import MUNICIPIOS_COORDS
+            mentioned = []
+            resp_lower = response.lower()
+            for mun, (lat, lng) in MUNICIPIOS_COORDS.items():
+                if mun.lower() in resp_lower:
+                    mentioned.append((mun, lat, lng))
+            if mentioned:
+                links = "\n".join(
+                    f"[{m} en mapa](https://maps.google.com/?q={la},{ln})"
+                    for m, la, ln in mentioned[:5]
+                )
+                response += f"\n\n📍 *Ubicaciones:*\n{links}"
+
             # Save interaction with full location data
             result = await session.execute(
                 sql_text(
