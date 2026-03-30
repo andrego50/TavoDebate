@@ -19,6 +19,9 @@ app = FastAPI(title="TavoDebate Pantalla")
 # WebSocket clients set
 ws_clients: set[WebSocket] = set()
 
+# In-memory event history (persisted to Redis)
+event_history: list[dict] = []
+
 ALL_CHANNELS = [
     "broadcast:sent", "bomb:sent", "fakenews:sent",
     "alert:sent", "tweet:new", "position:changed",
@@ -27,6 +30,16 @@ ALL_CHANNELS = [
     "layout:change", "leaderboard:update",
     "pantalla:command", "interaction:live",
 ]
+
+# Channels worth persisting for replay on page reload
+PERSIST_CHANNELS = {
+    "tweet:new", "broadcast:sent", "bomb:sent", "fakenews:sent",
+    "alert:sent", "pressure:sent", "vote:cast", "proposal:new",
+    "gabinete:event",
+}
+
+REDIS_HISTORY_KEY = "tavodebate:pantalla_history"
+MAX_HISTORY = 200
 
 
 class PantallaAgent(BaseAgent):
@@ -46,6 +59,9 @@ class PantallaAgent(BaseAgent):
         if geo_data_dir.exists():
             app.mount("/geodashboard/data", StaticFiles(directory=str(geo_data_dir)), name="geodata")
 
+        # Load event history from Redis
+        await self._load_history()
+
         # Start Redis listener
         asyncio.create_task(self._redis_listener())
 
@@ -53,6 +69,30 @@ class PantallaAgent(BaseAgent):
         config = uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="info")
         server = uvicorn.Server(config)
         await server.serve()
+
+    async def _load_history(self):
+        """Load persisted event history from Redis on startup."""
+        global event_history
+        try:
+            raw = await self.bus.redis.lrange(REDIS_HISTORY_KEY, 0, -1)
+            event_history = [json.loads(r) for r in raw]
+            logger.info(f"Loaded {len(event_history)} events from history")
+        except Exception as e:
+            logger.error(f"Failed to load history: {e}")
+            event_history = []
+
+    async def _save_event(self, event: dict):
+        """Persist event to Redis list."""
+        global event_history
+        event_history.append(event)
+        try:
+            await self.bus.redis.rpush(REDIS_HISTORY_KEY, json.dumps(event))
+            await self.bus.redis.ltrim(REDIS_HISTORY_KEY, -MAX_HISTORY, -1)
+        except Exception as e:
+            logger.error(f"Failed to save event: {e}")
+        # Trim in-memory too
+        if len(event_history) > MAX_HISTORY:
+            event_history[:] = event_history[-MAX_HISTORY:]
 
     async def _redis_listener(self):
         """Escucha TODOS los canales y reenvía por WebSocket."""
@@ -78,6 +118,11 @@ class PantallaAgent(BaseAgent):
                     continue
 
                 event = {"channel": channel, "data": data}
+
+                # Persist important events
+                if channel in PERSIST_CHANNELS:
+                    await self._save_event(event)
+
                 await self._broadcast_ws(event)
             except Exception as e:
                 logger.error(f"Redis listener error: {e}")
@@ -121,9 +166,16 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     ws_clients.add(websocket)
     logger.info(f"WebSocket client connected ({len(ws_clients)} total)")
+
+    # Send full event history to new client
+    for event in event_history:
+        try:
+            await websocket.send_json(event)
+        except Exception:
+            break
+
     try:
         while True:
-            # Keep connection alive, receive pings
             await websocket.receive_text()
     except WebSocketDisconnect:
         ws_clients.discard(websocket)
