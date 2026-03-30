@@ -317,6 +317,8 @@ Intenta que haya participantes en todas las bancadas. Si una queda vacía, puede
 | `/contralor` | Voz: Control fiscal |
 | `/empresa` | Voz: Empresa tech |
 | `/alcalde` | Voz: Alcalde proponente |
+| `/preparar_ponencia` | La IA arma tu ponencia según tu bancada |
+| `/preparar_ponencia <ideas>` | Ponencia basada en tus ideas |
 | `/proponer <texto>` | Proponer enmienda |
 | `/propuestas_todas` | Ver todas las propuestas |
 | `/apoyar N` | Apoyar propuesta #N |

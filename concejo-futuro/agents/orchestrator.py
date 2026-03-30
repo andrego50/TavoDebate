@@ -109,6 +109,7 @@ class Orchestrator(BaseAgent):
             {"command": "contralor", "description": "Voz: Control fiscal"},
             {"command": "empresa", "description": "Voz: Empresa tech"},
             {"command": "alcalde", "description": "Voz: Alcalde proponente"},
+            {"command": "preparar_ponencia", "description": "IA te ayuda a armar tu ponencia"},
             {"command": "proponer", "description": "Proponer enmienda"},
             {"command": "propuestas_todas", "description": "Ver todas las propuestas"},
             {"command": "votar_proyecto", "description": "Votar el proyecto"},

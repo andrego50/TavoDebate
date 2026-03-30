@@ -137,6 +137,26 @@ class ChatAgent(BaseAgent):
         elif command == "/mi_certificado":
             from handlers.certificate_generator import handle_certificado
             await handle_certificado(self, user_id, chat_id)
+        elif command == "/preparar_ponencia":
+            from handlers.ponencia_handler import handle_preparar_ponencia
+            await handle_preparar_ponencia(self, user_id, chat_id, args)
+        # Voice switch commands
+        elif command in ("/ciudadano", "/experto", "/contralor", "/empresa", "/alcalde"):
+            voice_name = command[1:]  # Remove /
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                await session.execute(
+                    sql_text("UPDATE users SET active_voice = :v WHERE telegram_id = :tid"),
+                    {"v": voice_name, "tid": user_id},
+                )
+            from core.voices import VOICES
+            voice_info = VOICES.get(voice_name, {})
+            await self._send_response(
+                chat_id,
+                f"Voz cambiada a *{voice_info.get('nombre', voice_name)}*\n"
+                f"_{voice_info.get('descripcion', '')}_\n\n"
+                f"Ahora todas tus preguntas serán respondidas desde esta perspectiva."
+            )
         # Admin commands
         elif command in (
             "/broadcast", "/bomba", "/fakenews", "/presion", "/gabinete_remover",
