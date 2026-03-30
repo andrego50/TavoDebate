@@ -337,6 +337,17 @@ class ChatAgent(BaseAgent):
         elif data.startswith("onboard_"):
             from handlers.onboarding import handle_onboard_callback
             await handle_onboard_callback(self, user_id, chat_id, data, callback_id)
+        elif data.startswith("fase_"):
+            if user_id in settings.admin_ids:
+                fase_key = data.split("_", 1)[1]
+                from handlers.onboarding import FASES
+                fase_info = FASES.get(fase_key)
+                if fase_info:
+                    await self.bus.publish("simulation:command", {
+                        "action": "phase_change",
+                        "args": {"phase": fase_key},
+                    })
+                    await self._send_response(chat_id, f"✅ Fase cambiada a: *{fase_info['nombre']}*")
 
     async def _send_response(self, chat_id: int, text: str, parse_mode: str = "Markdown"):
         """Envía respuesta al usuario via telegram:outgoing stream."""

@@ -93,11 +93,33 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         await agent._send_response(chat_id, "Alerta enviada.")
 
     elif cmd == "fase":
-        await agent.bus.publish("simulation:command", {
-            "action": "phase_change",
-            "args": {"phase": args.strip()},
-        })
-        await agent._send_response(chat_id, f"Fase cambiada a: {args.strip()}")
+        if not args.strip():
+            # Show inline keyboard with phases
+            from handlers.onboarding import FASES
+            keyboard = []
+            for fase_key, fase_info in FASES.items():
+                keyboard.append([{
+                    "text": f"{fase_info['nombre']}",
+                    "callback_data": f"fase_{fase_key}",
+                }])
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "🏛️ *Selecciona la fase del ejercicio:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+        else:
+            from handlers.onboarding import FASES
+            fase_key = args.strip().lower()
+            fase_info = FASES.get(fase_key)
+            if not fase_info:
+                await agent._send_response(chat_id, f"Fase '{fase_key}' no existe.")
+                return
+            await agent.bus.publish("simulation:command", {
+                "action": "phase_change",
+                "args": {"phase": fase_key},
+            })
+            await agent._send_response(chat_id, f"✅ Fase cambiada a: *{fase_info['nombre']}*")
 
     elif cmd == "ronda":
         try:
