@@ -265,7 +265,7 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
 
     if step == 0:
         # Step 0: PIN verification
-        import aioredis
+        import redis.asyncio as aioredis
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         pin = await redis.get("tavodebate:access_pin")
         await redis.aclose()

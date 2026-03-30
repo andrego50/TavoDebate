@@ -27,11 +27,22 @@ docker compose ps          # Los 10 contenedores deben estar "Up"
 docker compose logs --tail=5 orchestrator  # Debe decir "Uvicorn running"
 ```
 
-### 2. Abrir el bot en Telegram
+### 2. Activar el PIN de acceso
+
+Desde Telegram, envía:
+```
+/pin 1234
+```
+(Usa cualquier código de 4 dígitos). Esto impide que personas ajenas se registren. Solo quienes conozcan el PIN podrán completar el registro.
+
+- `/pin` → Ver PIN actual
+- `/pin off` → Desactivar PIN (registro abierto)
+
+### 3. Abrir el bot en Telegram
 
 Busca **@TavoDebate_bot** (o el nombre que tenga tu bot) en Telegram y envía `/start`. Deberías ver el Panel de Dinamizador con todos los comandos.
 
-### 3. Verificar el geodashboard
+### 4. Verificar el geodashboard
 
 Abre en el navegador: `http://192.168.0.221:8085/pantalla`
 
@@ -40,16 +51,17 @@ Este es el mapa interactivo que se proyecta en pantalla grande durante el ejerci
 - Actividad en tiempo real de los concejales
 - Tweets simulados, alertas, votaciones
 
-### 4. Prueba rápida personal
+### 5. Prueba rápida personal
 
 Desde tu Telegram como admin:
 
 1. `/estado` → Debe mostrar el Panel de Dinamizador
-2. Escribe: "Cuánto cuesta el proyecto SIADR?" → El bot debe responder con datos y enlaces de mapa
-3. `/broadcast Esto es una prueba` → Envía mensaje a todos los registrados
-4. `/fase registro` → Cambia la fase a registro
+2. `/pin 9999` → Activar PIN de prueba
+3. `/fase` → Deben aparecer botones para elegir la fase + resumen de participantes
+4. `/broadcast Esto es una prueba` → Envía mensaje a todos los registrados
+5. `/pin off` → Desactivar PIN de prueba
 
-### 5. Limpiar datos de pruebas anteriores
+### 6. Limpiar datos de pruebas anteriores
 
 Si hay datos viejos de pruebas:
 
@@ -97,16 +109,18 @@ docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro -c "
 
 **Qué hacer:**
 
-1. Proyectar el QR o link del bot en pantalla
-2. Explicar brevemente:
-   > "Van a ser concejales de Cundinamarca. Entren al bot, sigan los 4 pasos: nombre, provincia, municipio, bancada e intereses. La IA les va a dar un dossier personalizado según su bancada."
+1. Activar el PIN: `/pin 1234` (el que quieras)
+2. Proyectar el QR o link del bot en pantalla + decir el PIN en voz alta
+3. Explicar brevemente:
+   > "Van a ser concejales de Cundinamarca. Entren al bot, sigan los pasos: ingresen el código, su nombre, provincia, municipio, bancada e intereses. La IA les va a dar un dossier personalizado según su bancada."
 
-3. Cambiar la fase:
+4. Cambiar la fase (escribe `/fase` y aparecen los botones, o directamente):
    ```
    /fase registro
    ```
+   Al cambiar de fase, recibes automáticamente un **resumen de participantes** con total, por bancada, por provincia y últimos registros.
 
-4. Monitorear registros:
+5. Monitorear registros:
    ```
    /estado
    ```
@@ -293,16 +307,20 @@ Intenta que haya participantes en todas las bancadas. Si una queda vacía, puede
 |---------|----------|
 | `/start` | Panel de dinamizador |
 | `/estado` | Stats del ejercicio (usuarios, interacciones, votos por bancada) |
-| `/fase <nombre>` | Cambiar fase (registro, ponencia_alcalde, investigacion, debate, enmiendas, votacion, debriefing) |
+| `/fase` | Muestra botones para elegir fase + resumen de participantes |
+| `/fase <nombre>` | Cambiar fase directamente + resumen |
+| `/pin 1234` | Activar PIN de acceso (4 dígitos) |
+| `/pin off` | Desactivar PIN (registro abierto) |
+| `/pin` | Ver PIN actual |
 | `/ronda <min>` | Timer de N minutos en pantalla |
 | `/broadcast <msg>` | Mensaje a todos los concejales |
-| `/bomba <msg>` | Bomba informativa (evento sorpresa) |
-| `/fakenews <msg>` | Fake news (para ejercicio de verificación) |
+| `/bomba <N>` | Bomba informativa #N |
+| `/fakenews <N>` | Fake news #N |
 | `/presion <msg>` | Presión política simulada |
 | `/tweet <texto>` | Tweet simulado en pantalla |
 | `/alerta <msg>` | Alerta visual en geodashboard |
 | `/briefing` | Forzar briefing de inteligencia |
-| `/llm deepseek` | Cambiar proveedor LLM |
+| `/llm switch <proveedor>` | Cambiar proveedor LLM (deepseek/kimi) |
 | `/help` | Lista completa de comandos |
 
 ### Para los concejales

@@ -120,6 +120,10 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
                 "args": {"phase": fase_key},
             })
             await agent._send_response(chat_id, f"✅ Fase cambiada a: *{fase_info['nombre']}*")
+            # Send participants summary
+            from handlers.phase_handlers import get_participants_summary
+            summary = await get_participants_summary()
+            await agent._send_response(chat_id, summary)
 
     elif cmd == "ronda":
         try:

@@ -107,3 +107,64 @@ async def handle_estado(agent, user_id: int, chat_id: int):
     )
 
     await agent._send_response(chat_id, msg)
+
+
+async def get_participants_summary() -> str:
+    """Genera resumen de participantes registrados para el admin."""
+    async with get_session() as session:
+        from sqlalchemy import text as sql_text
+
+        total = (await session.execute(
+            sql_text(
+                "SELECT COUNT(*) FROM users "
+                "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador'"
+            )
+        )).scalar() or 0
+
+        # By bancada
+        bancadas = (await session.execute(
+            sql_text(
+                "SELECT bancada_nombre, COUNT(*) as c FROM users "
+                "WHERE onboarding_complete = true AND bancada_nombre != '' AND bancada_nombre != 'Dinamizador' "
+                "GROUP BY bancada_nombre ORDER BY c DESC"
+            )
+        )).mappings().all()
+
+        # By provincia (top 5)
+        provincias = (await session.execute(
+            sql_text(
+                "SELECT provincia, COUNT(*) as c FROM users "
+                "WHERE onboarding_complete = true AND provincia != '' AND provincia != 'Admin' "
+                "GROUP BY provincia ORDER BY c DESC LIMIT 5"
+            )
+        )).mappings().all()
+
+        # Recent registrations (last 5)
+        recientes = (await session.execute(
+            sql_text(
+                "SELECT nombre_completo, municipio, bancada_nombre FROM users "
+                "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador' "
+                "ORDER BY created_at DESC LIMIT 5"
+            )
+        )).mappings().all()
+
+    bancada_lines = "\n".join(
+        f"  {r['bancada_nombre']}: {r['c']} concejales" for r in bancadas
+    ) or "  Ninguno aún"
+
+    prov_lines = "\n".join(
+        f"  {r['provincia']}: {r['c']}" for r in provincias
+    ) or "  —"
+
+    recientes_lines = "\n".join(
+        f"  • {r['nombre_completo']} ({r['municipio']}) — {r['bancada_nombre']}"
+        for r in recientes
+    ) or "  Ninguno aún"
+
+    return (
+        f"📋 *Resumen de participantes*\n\n"
+        f"*Total registrados:* {total}\n\n"
+        f"*Por bancada:*\n{bancada_lines}\n\n"
+        f"*Top provincias:*\n{prov_lines}\n\n"
+        f"*Últimos registros:*\n{recientes_lines}"
+    )

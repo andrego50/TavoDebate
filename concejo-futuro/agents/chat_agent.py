@@ -348,6 +348,9 @@ class ChatAgent(BaseAgent):
                         "args": {"phase": fase_key},
                     })
                     await self._send_response(chat_id, f"✅ Fase cambiada a: *{fase_info['nombre']}*")
+                    from handlers.phase_handlers import get_participants_summary
+                    summary = await get_participants_summary()
+                    await self._send_response(chat_id, summary)
 
     async def _send_response(self, chat_id: int, text: str, parse_mode: str = "Markdown"):
         """Envía respuesta al usuario via telegram:outgoing stream."""
