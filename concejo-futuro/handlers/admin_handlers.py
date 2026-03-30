@@ -279,9 +279,20 @@ async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
         )
 
     elif fase_key == "votacion":
-        # Remind all concejales to vote
+        # Create voting session + remind all concejales to vote
         async with get_session() as session:
             from sqlalchemy import text as sql_text
+            # Close any existing open sessions
+            await session.execute(
+                sql_text("UPDATE voting_sessions SET is_open = false, closed_at = NOW() WHERE is_open = true")
+            )
+            # Open new voting session
+            await session.execute(
+                sql_text(
+                    "INSERT INTO voting_sessions (type, description, is_open) "
+                    "VALUES ('proyecto', 'Proyecto de Acuerdo 001-2026 — SIADR', true)"
+                )
+            )
             result = await session.execute(
                 sql_text(
                     "SELECT telegram_id FROM users "

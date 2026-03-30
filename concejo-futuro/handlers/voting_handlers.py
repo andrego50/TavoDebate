@@ -9,7 +9,7 @@ logger = logging.getLogger("handlers.voting")
 
 
 async def handle_votar_proyecto(agent, user_id: int, chat_id: int, args: str):
-    """Inicia votación del proyecto con botones inline."""
+    """Votación del proyecto: acepta texto directo o muestra botones inline."""
     async with get_session() as session:
         from sqlalchemy import text as sql_text
 
@@ -25,12 +25,24 @@ async def handle_votar_proyecto(agent, user_id: int, chat_id: int, args: str):
             await agent._send_response(chat_id, "No hay sesión de votación del proyecto abierta.")
             return
 
+    # Direct vote via text argument
+    vote_map = {
+        "a_favor": "si", "si": "si", "favor": "si",
+        "en_contra": "no", "no": "no", "contra": "no",
+        "abstencion": "abstencion", "abstención": "abstencion",
+    }
+    arg = args.strip().lower().replace(" ", "_") if args else ""
+    if arg in vote_map:
+        await _register_vote(agent, user_id, chat_id, "proyecto", None, vote_map[arg])
+        return
+
+    # Show inline buttons
     keyboard = json.dumps({
         "inline_keyboard": [
             [
-                {"text": "A favor", "callback_data": f"vote_proyecto_si"},
-                {"text": "En contra", "callback_data": f"vote_proyecto_no"},
-                {"text": "Abstención", "callback_data": f"vote_proyecto_abstencion"},
+                {"text": "A favor", "callback_data": "vote_proyecto_si"},
+                {"text": "En contra", "callback_data": "vote_proyecto_no"},
+                {"text": "Abstención", "callback_data": "vote_proyecto_abstencion"},
             ]
         ]
     })
