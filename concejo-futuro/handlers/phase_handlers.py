@@ -144,7 +144,7 @@ async def get_participants_summary() -> str:
             sql_text(
                 "SELECT nombre_completo, municipio, bancada_nombre FROM users "
                 "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador' "
-                "ORDER BY created_at DESC LIMIT 5"
+                "ORDER BY first_seen DESC LIMIT 5"
             )
         )).mappings().all()
 
