@@ -157,6 +157,23 @@ class ChatAgent(BaseAgent):
                 f"_{voice_info.get('descripcion', '')}_\n\n"
                 f"Ahora todas tus preguntas serán respondidas desde esta perspectiva."
             )
+        # Pantalla URL management (admin only)
+        elif command == "/pantalla":
+            if user_id not in settings.admin_ids:
+                return
+            import redis.asyncio as aioredis
+            redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+            if not args:
+                current = await redis.get("tavodebate:pantalla_url")
+                if current:
+                    await self._send_response(chat_id, f"🔗 Pantalla en vivo: {current}")
+                else:
+                    await self._send_response(chat_id, "No hay URL de pantalla configurada.\nUso: `/pantalla https://tu-url.trycloudflare.com`")
+            else:
+                url = args.strip()
+                await redis.set("tavodebate:pantalla_url", url)
+                await self._send_response(chat_id, f"🔗 URL de pantalla configurada:\n{url}")
+            await redis.aclose()
         # PIN management (admin only)
         elif command == "/pin":
             if user_id not in settings.admin_ids:

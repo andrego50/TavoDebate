@@ -233,12 +233,21 @@ async def _create_test_users(agent, chat_id: int):
     await agent._send_response(chat_id, "10 usuarios de prueba creados.")
 
 
+async def _get_pantalla_url() -> str:
+    """Gets the public pantalla URL from Redis, or falls back to local."""
+    import redis.asyncio as aioredis
+    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    url = await r.get("tavodebate:pantalla_url")
+    await r.aclose()
+    return url or f"http://{settings.vps_domain}:8085/pantalla"
+
+
 async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
     """Ejecuta acciones automáticas al cambiar de fase."""
     if fase_key == "ponencia_alcalde":
         # Broadcast the alcalde presentation to all registered concejales
         from core.ponencia_alcalde import PONENCIA_ALCALDE, PONENCIA_ALCALDE_CORTA
-        pantalla_url = f"http://{settings.vps_domain}:8085/pantalla"
+        pantalla_url = await _get_pantalla_url()
 
         # Get all registered concejal telegram_ids
         async with get_session() as session:
@@ -300,6 +309,7 @@ async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
 
     elif fase_key == "debriefing":
         # Remind about certificates
+        pantalla_url = await _get_pantalla_url()
         async with get_session() as session:
             from sqlalchemy import text as sql_text
             result = await session.execute(
@@ -317,8 +327,7 @@ async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
                     "🎓 *SESIÓN FINALIZADA*\n\n"
                     "Gracias por participar en el Gran Concejo del Futuro.\n\n"
                     "Descarga tu certificado de participación: /mi\\_certificado\n\n"
-                    "🔗 Revive el debate en vivo:\n"
-                    f"http://{settings.vps_domain}:8085/pantalla"
+                    f"🔗 Revive el debate en vivo:\n{pantalla_url}"
                 ),
                 "parse_mode": "Markdown",
             })
