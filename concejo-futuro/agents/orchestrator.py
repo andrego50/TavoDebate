@@ -36,6 +36,8 @@ class Orchestrator(BaseAgent):
         app.state.orchestrator = self
 
     async def start(self):
+        # Set bot menu commands on startup
+        asyncio.create_task(self._set_bot_commands())
         # Start health checker loop
         asyncio.create_task(self._health_check_loop())
         asyncio.create_task(self._outgoing_message_loop())
@@ -91,6 +93,56 @@ class Orchestrator(BaseAgent):
         if action == "llm_switch":
             provider = args.get("provider", "deepseek")
             logger.info(f"Switching LLM to {provider}")
+
+    async def _set_bot_commands(self):
+        """Configura el menú de comandos del bot en Telegram."""
+        import httpx
+        bot_url = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
+
+        # Comandos para usuarios normales (concejales)
+        user_commands = [
+            {"command": "start", "description": "Iniciar / reiniciar registro"},
+            {"command": "help", "description": "Ver comandos disponibles"},
+            {"command": "estado", "description": "Tu resumen personal"},
+            {"command": "ciudadano", "description": "Voz: Líder campesino"},
+            {"command": "experto", "description": "Voz: Científico de datos"},
+            {"command": "contralor", "description": "Voz: Control fiscal"},
+            {"command": "empresa", "description": "Voz: Empresa tech"},
+            {"command": "alcalde", "description": "Voz: Alcalde proponente"},
+            {"command": "proponer", "description": "Proponer enmienda"},
+            {"command": "propuestas_todas", "description": "Ver todas las propuestas"},
+            {"command": "votar_proyecto", "description": "Votar el proyecto"},
+            {"command": "mi_certificado", "description": "Descargar certificado PDF"},
+        ]
+
+        # Comandos adicionales para admins
+        admin_commands = user_commands + [
+            {"command": "fase", "description": "Cambiar fase del ejercicio"},
+            {"command": "broadcast", "description": "Mensaje a todos"},
+            {"command": "bomba", "description": "Bomba informativa"},
+            {"command": "fakenews", "description": "Lanzar fake news"},
+            {"command": "ronda", "description": "Iniciar timer (minutos)"},
+            {"command": "tweet", "description": "Tweet simulado"},
+            {"command": "alerta", "description": "Alerta visual"},
+            {"command": "briefing", "description": "Forzar briefing"},
+            {"command": "llm", "description": "Cambiar proveedor LLM"},
+        ]
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # Set default commands for all users
+                await client.post(f"{bot_url}/setMyCommands", json={
+                    "commands": user_commands,
+                })
+                # Set admin commands (scope: specific admin users)
+                for admin_id in settings.admin_ids:
+                    await client.post(f"{bot_url}/setMyCommands", json={
+                        "commands": admin_commands,
+                        "scope": {"type": "chat", "chat_id": admin_id},
+                    })
+                logger.info("Bot menu commands configured")
+        except Exception as e:
+            logger.error(f"Failed to set bot commands: {e}")
 
     async def _health_check_loop(self):
         while self._running:
