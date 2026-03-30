@@ -186,26 +186,50 @@ class ChatAgent(BaseAgent):
             response = re.sub(r'<<<[^>]+>>>', '', response).strip()
             response = re.sub(r'\{[^}]*"tipo_alerta"[^}]*\}', '', response).strip()
 
-            # Save interaction
+            # Save interaction with full location data
             result = await session.execute(
                 sql_text(
-                    "INSERT INTO interactions (user_id, question, response, voice_used) "
-                    "VALUES (:uid, :q, :r, :v) RETURNING id"
+                    "INSERT INTO interactions (user_id, telegram_id, nombre_concejal, "
+                    "municipio, provincia, bancada_id, bancada_nombre, question, response, "
+                    "voice_used) "
+                    "VALUES (:uid, :tid, :nombre, :mun, :prov, :bid, :bname, :q, :r, :v) "
+                    "RETURNING id"
                 ),
-                {"uid": user["id"], "q": text, "r": response, "v": voice},
+                {
+                    "uid": user["id"], "tid": user_id,
+                    "nombre": user.get("nombre_completo", ""),
+                    "mun": user.get("municipio", ""),
+                    "prov": user.get("provincia", ""),
+                    "bid": user.get("bancada_id"),
+                    "bname": user.get("bancada_nombre", ""),
+                    "q": text, "r": response, "v": voice,
+                },
             )
             interaction_id = result.scalar()
 
-        # Publish event for Intel agent
-        await self.bus.publish("interaction:new", {
+        # Publish event for Intel agent with location + coordinates
+        from core.config import get_coords_for_municipio
+        municipio = user.get("municipio", "")
+        coords = get_coords_for_municipio(municipio)
+        event_data = {
             "id": interaction_id,
             "user_id": user["id"],
             "telegram_id": user_id,
+            "nombre_concejal": user.get("nombre_completo", ""),
+            "municipio": municipio,
+            "provincia": user.get("provincia", ""),
             "bancada_id": user.get("bancada_id"),
             "voice": voice,
             "question": text,
             "response": response,
-        })
+        }
+        if coords:
+            event_data["lat"] = coords[0]
+            event_data["lng"] = coords[1]
+        await self.bus.publish("interaction:new", event_data)
+        # Publish to pantalla for real-time map pin with coordinates
+        if coords:
+            await self.bus.raw.publish("interaction:live", json.dumps(event_data))
 
         await self._send_response(chat_id, response)
 

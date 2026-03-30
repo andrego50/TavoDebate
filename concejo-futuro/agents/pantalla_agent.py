@@ -25,7 +25,7 @@ ALL_CHANNELS = [
     "vote:cast", "proposal:new", "timer:update",
     "gabinete:event", "pressure:sent", "ponencia:analyzed",
     "layout:change", "leaderboard:update",
-    "pantalla:command",
+    "pantalla:command", "interaction:live",
 ]
 
 

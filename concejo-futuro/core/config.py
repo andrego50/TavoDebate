@@ -89,9 +89,38 @@ PROVINCIAS_MUNICIPIOS = {
     "Ubaté": ["Carmen de Carupa", "Cucunubá", "Fúquene", "Guachetá", "Lenguazaque", "Simijaca", "Susa", "Sutatausa", "Tausa", "Ubaté"],
 }
 
+MUNICIPIOS_COORDS = {
+    "Chocontá": (5.146, -73.684), "Villapinzón": (5.215, -73.597),
+    "Girardot": (4.302, -74.802), "Agua de Dios": (4.378, -74.667),
+    "Guaduas": (5.067, -74.598), "Caparrapí": (5.349, -74.496),
+    "Villeta": (5.014, -74.472), "La Vega": (4.998, -74.341),
+    "Gachetá": (4.818, -73.637), "Guasca": (4.866, -73.877),
+    "San Juan de Rioseco": (4.847, -74.627), "Vianí": (4.874, -74.558),
+    "Medina": (4.509, -73.349), "Paratebueno": (4.375, -73.213),
+    "Cáqueza": (4.408, -73.948), "Fómeque": (4.487, -73.895),
+    "Pacho": (5.131, -74.159), "Yacopí": (5.459, -74.339),
+    "Zipaquirá": (5.022, -74.005), "Cajicá": (4.919, -74.028),
+    "Facatativá": (4.815, -74.355), "Madrid": (4.734, -74.264),
+    "Soacha": (4.579, -74.217), "Sibaté": (4.49, -74.26),
+    "Fusagasugá": (4.337, -74.364), "Cabrera": (3.979, -74.486),
+    "La Mesa": (4.633, -74.462), "Viotá": (4.438, -74.523),
+    "Ubaté": (5.308, -73.816), "Simijaca": (5.505, -73.852),
+    "Chía": (4.862, -74.059), "Cogua": (5.063, -73.978),
+    "Cota": (4.813, -74.102), "Gachancipá": (4.993, -73.874),
+    "Nemocón": (5.066, -73.879), "Sopó": (4.907, -73.942),
+    "Tabio": (4.914, -74.098), "Tenjo": (4.870, -74.144),
+    "Tocancipá": (4.964, -73.912),
+}
+
+
 def get_provincia_for_municipio(municipio: str) -> str:
     """Retorna la provincia dado un municipio."""
     for provincia, municipios in PROVINCIAS_MUNICIPIOS.items():
         if municipio in municipios:
             return provincia
     return "Desconocida"
+
+
+def get_coords_for_municipio(municipio: str) -> tuple[float, float] | None:
+    """Retorna (lat, lng) para un municipio, o None si no se conoce."""
+    return MUNICIPIOS_COORDS.get(municipio)
