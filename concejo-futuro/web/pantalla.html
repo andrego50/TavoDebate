@@ -27,7 +27,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; colo
 .main.mode-crisis { grid-template-columns: 100%; }
 
 /* === PANELS === */
-.panel { background: #111; overflow-y: auto; padding: 10px; }
+.panel { background: #111; overflow-y: auto; padding: 10px; max-height: calc(100vh - 90px); }
 .panel::-webkit-scrollbar { width: 4px; }
 .panel::-webkit-scrollbar-thumb { background: #333; }
 .panel-title { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #222; padding-bottom: 5px; }
@@ -70,11 +70,11 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; colo
 .bancada-bar .bar .count { position: absolute; right: 5px; top: 2px; font-size: 11px; }
 
 /* === VOTE PANEL === */
-.vote-display { text-align: center; padding: 20px; }
-.vote-bar { height: 60px; background: #222; border-radius: 8px; overflow: hidden; display: flex; margin: 20px 0; }
+#voteDisplay { position: sticky; top: 0; z-index: 10; background: #111; padding-bottom: 8px; border-bottom: 1px solid #333; }
+.vote-bar { height: 50px; background: #222; border-radius: 8px; overflow: hidden; display: flex; margin: 10px 0; }
 .vote-bar .favor { background: #4caf50; transition: width 1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; }
 .vote-bar .contra { background: #f44336; transition: width 1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; }
-.vote-bar .abstencion { background: #ff9800; transition: width 1s; }
+.vote-bar .abstencion { background: #ff9800; transition: width 1s; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
 
 /* === PROPOSALS === */
 .proposal { background: #1a1a2e; border-radius: 6px; padding: 8px; margin-bottom: 6px; border-left: 3px solid #5c6bc0; }
@@ -127,6 +127,21 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; colo
 
     <!-- DASHBOARD PANEL -->
     <div class="panel" id="dashPanel">
+        <!-- Vote display (top, sticky - visible when voting starts) -->
+        <div id="voteDisplay" style="display:none">
+            <h3 style="text-align:center; margin: 10px 0;">🗳️ VOTACIÓN EN VIVO</h3>
+            <div class="vote-bar" id="voteBar">
+                <div class="favor" id="voteFavor" style="width:50%">0</div>
+                <div class="contra" id="voteContra" style="width:50%">0</div>
+                <div class="abstencion" id="voteAbst" style="width:0%"></div>
+            </div>
+            <div style="display:flex; justify-content:center; gap:20px; font-size:13px; color:#aaa; margin-bottom:12px;">
+                <span>🟢 A favor: <b id="voteFavorN">0</b></span>
+                <span>🔴 En contra: <b id="voteContraN">0</b></span>
+                <span>🟡 Abstención: <b id="voteAbstN">0</b></span>
+            </div>
+        </div>
+
         <div class="panel-title">📊 Dashboard en Vivo</div>
         <div class="kpi-row" id="kpis">
             <div class="kpi"><div class="kpi-value" id="kpi-users">0</div><div class="kpi-label">Concejales</div></div>
@@ -136,15 +151,6 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; colo
 
         <!-- Bancada positions -->
         <div id="bancadaBars"></div>
-
-        <!-- Vote display (hidden until voting) -->
-        <div id="voteDisplay" style="display:none">
-            <h3 style="text-align:center; margin: 10px 0;">🗳️ VOTACIÓN EN VIVO</h3>
-            <div class="vote-bar" id="voteBar">
-                <div class="favor" id="voteFavor" style="width:50%">0</div>
-                <div class="contra" id="voteContra" style="width:50%">0</div>
-            </div>
-        </div>
 
         <!-- Top proposals -->
         <div id="proposalsList"></div>
@@ -290,15 +296,24 @@ function updateTimer(data) {
 // === Vote ===
 function updateVote(data) {
     document.getElementById('voteDisplay').style.display = 'block';
-    if (data.vote === 'si') voteData.favor++;
-    else if (data.vote === 'no') voteData.contra++;
+    if (data.vote === 'si' || data.vote === 'a_favor') voteData.favor++;
+    else if (data.vote === 'no' || data.vote === 'en_contra') voteData.contra++;
     else voteData.abstencion++;
 
     const total = voteData.favor + voteData.contra + voteData.abstencion || 1;
-    document.getElementById('voteFavor').style.width = `${voteData.favor/total*100}%`;
-    document.getElementById('voteFavor').textContent = `✅ ${voteData.favor}`;
-    document.getElementById('voteContra').style.width = `${voteData.contra/total*100}%`;
-    document.getElementById('voteContra').textContent = `❌ ${voteData.contra}`;
+    const pFavor = voteData.favor / total * 100;
+    const pContra = voteData.contra / total * 100;
+    const pAbst = voteData.abstencion / total * 100;
+
+    document.getElementById('voteFavor').style.width = `${pFavor}%`;
+    document.getElementById('voteFavor').textContent = pFavor > 10 ? `✅ ${voteData.favor}` : '';
+    document.getElementById('voteContra').style.width = `${pContra}%`;
+    document.getElementById('voteContra').textContent = pContra > 10 ? `❌ ${voteData.contra}` : '';
+    document.getElementById('voteAbst').style.width = `${pAbst}%`;
+
+    document.getElementById('voteFavorN').textContent = voteData.favor;
+    document.getElementById('voteContraN').textContent = voteData.contra;
+    document.getElementById('voteAbstN').textContent = voteData.abstencion;
 }
 
 // === Proposals ===
