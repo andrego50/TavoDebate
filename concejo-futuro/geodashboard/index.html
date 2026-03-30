@@ -867,7 +867,11 @@ function resetView() {
    ═══════════════════════════════════════════════════════════════ */
 function connectWS() {
   try {
-    const ws = new WebSocket(`ws://${location.hostname}:8080/ws`);
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = location.protocol === 'https:'
+        ? location.host
+        : `${location.hostname}:8080`;
+    const ws = new WebSocket(`${proto}//${host}/ws`);
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       if (msg.channel === 'vote:update') {

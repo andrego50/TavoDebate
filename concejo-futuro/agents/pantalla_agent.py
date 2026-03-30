@@ -41,6 +41,11 @@ class PantallaAgent(BaseAgent):
         static_dir.mkdir(parents=True, exist_ok=True)
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+        # Mount geodashboard data
+        geo_data_dir = Path(__file__).parent.parent / "geodashboard" / "data"
+        if geo_data_dir.exists():
+            app.mount("/geodashboard/data", StaticFiles(directory=str(geo_data_dir)), name="geodata")
+
         # Start Redis listener
         asyncio.create_task(self._redis_listener())
 
@@ -102,6 +107,12 @@ class PantallaAgent(BaseAgent):
 @app.get("/pantalla")
 async def pantalla_page():
     html_path = Path(__file__).parent.parent / "web" / "pantalla.html"
+    return FileResponse(str(html_path), media_type="text/html")
+
+
+@app.get("/geodashboard")
+async def geodashboard_page():
+    html_path = Path(__file__).parent.parent / "geodashboard" / "index.html"
     return FileResponse(str(html_path), media_type="text/html")
 
 

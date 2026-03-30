@@ -168,7 +168,11 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; colo
 
 <script>
 // === WebSocket Connection ===
-const WS_URL = `ws://${window.location.hostname}:8080/ws`;
+const _proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const _host = window.location.protocol === 'https:'
+    ? window.location.host   // tunnel: same host, no port override
+    : `${window.location.hostname}:8080`;  // local: explicit port
+const WS_URL = `${_proto}//${_host}/ws`;
 let ws;
 let tickerItems = [];
 let tweetCount = 0;
