@@ -3,14 +3,14 @@
 import json
 import logging
 
-from core.config import BANCADAS
+from core.config import BANCADAS, settings
 from db.database import get_session
 
 logger = logging.getLogger("handlers.phase")
 
 
 async def handle_estado(agent, user_id: int, chat_id: int):
-    """Muestra el estado personal del concejal."""
+    """Muestra el estado del concejal o panel de dinamizador."""
     async with get_session() as session:
         from sqlalchemy import text as sql_text
 
@@ -23,29 +23,72 @@ async def handle_estado(agent, user_id: int, chat_id: int):
             await agent._send_response(chat_id, "No estás registrado. Usa /start")
             return
 
-        # Count interactions
-        result = await session.execute(
+        # Admin/dinamizador: show exercise-level stats
+        if user_id in settings.admin_ids:
+            total_users = (await session.execute(
+                sql_text("SELECT COUNT(*) FROM users WHERE onboarding_complete = true")
+            )).scalar() or 0
+
+            total_interactions = (await session.execute(
+                sql_text("SELECT COUNT(*) FROM interactions")
+            )).scalar() or 0
+
+            total_proposals = (await session.execute(
+                sql_text("SELECT COUNT(*) FROM proposals")
+            )).scalar() or 0
+
+            total_votes = (await session.execute(
+                sql_text("SELECT COUNT(*) FROM votes WHERE vote_type = 'proyecto'")
+            )).scalar() or 0
+
+            # Bancada breakdown
+            bancada_counts = (await session.execute(
+                sql_text(
+                    "SELECT bancada_nombre, COUNT(*) as c FROM users "
+                    "WHERE onboarding_complete = true AND bancada_nombre != '' "
+                    "GROUP BY bancada_nombre ORDER BY c DESC"
+                )
+            )).mappings().all()
+
+            bancada_lines = "\n".join(
+                f"  {r['bancada_nombre']}: {r['c']}" for r in bancada_counts
+            ) or "  Sin concejales registrados"
+
+            # Get current phase from Redis
+            phase = await agent.bus.get("current_phase") or "registro"
+
+            msg = (
+                f"🎛️ *Panel de Dinamizador — TavoDebate*\n\n"
+                f"*Fase actual:* {phase}\n\n"
+                f"*Concejales registrados:* {total_users}\n"
+                f"*Interacciones totales:* {total_interactions}\n"
+                f"*Propuestas presentadas:* {total_proposals}\n"
+                f"*Votos emitidos:* {total_votes}\n\n"
+                f"*Por bancada:*\n{bancada_lines}\n\n"
+                f"Usa /fase <nombre> para cambiar la fase.\n"
+                f"Usa /broadcast <msg> para enviar mensaje a todos."
+            )
+            await agent._send_response(chat_id, msg)
+            return
+
+        # Regular concejal view
+        total_interactions = (await session.execute(
             sql_text("SELECT COUNT(*) FROM interactions WHERE user_id = :uid"),
             {"uid": user["id"]},
-        )
-        total_interactions = result.scalar() or 0
+        )).scalar() or 0
 
-        # Count proposals
-        result = await session.execute(
+        total_proposals = (await session.execute(
             sql_text("SELECT COUNT(*) FROM proposals WHERE user_id = :uid"),
             {"uid": user["id"]},
-        )
-        total_proposals = result.scalar() or 0
+        )).scalar() or 0
 
-        # Check vote
-        result = await session.execute(
+        vote = (await session.execute(
             sql_text(
                 "SELECT vote FROM votes WHERE telegram_id = :tid "
                 "AND vote_type = 'proyecto' ORDER BY created_at DESC LIMIT 1"
             ),
             {"tid": user_id},
-        )
-        vote = result.scalar()
+        )).scalar()
 
     bancada = BANCADAS.get(user["bancada_id"], {})
     temas = ", ".join(user.get("temas_interes", []) or []) or "No especificados"
