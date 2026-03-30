@@ -3,6 +3,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from core.config import settings
@@ -34,7 +35,7 @@ async def get_session():
 async def init_db():
     """Verificar conexión a la base de datos."""
     async with engine.begin() as conn:
-        await conn.execute("SELECT 1")
+        await conn.execute(text("SELECT 1"))
     logger.info("Database connection established")
 
 
