@@ -83,6 +83,20 @@ class ChatAgent(BaseAgent):
             await self._handle_command(user_id, chat_id, text, username, first_name)
             return
 
+        # Check if user is in onboarding
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("SELECT onboarding_step FROM users WHERE telegram_id = :tid"),
+                {"tid": user_id},
+            )
+            step = result.scalar()
+
+        if step and step > 0:
+            from handlers.onboarding import process_onboarding_text
+            await process_onboarding_text(self, user_id, chat_id, text)
+            return
+
         # Regular message - generate response
         await self._handle_message(user_id, chat_id, text)
 
@@ -166,6 +180,11 @@ class ChatAgent(BaseAgent):
             response = await self.llm.generate(
                 system_prompt, text, cache_voice=voice
             )
+
+            # Clean LLM artifacts from response
+            import re
+            response = re.sub(r'<<<[^>]+>>>', '', response).strip()
+            response = re.sub(r'\{[^}]*"tipo_alerta"[^}]*\}', '', response).strip()
 
             # Save interaction
             result = await session.execute(

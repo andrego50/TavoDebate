@@ -16,7 +16,7 @@ httpx==0.28.1
 openai==1.58.1
 
 # Audio
-edge-tts==6.1.19
+edge-tts>=7.0.0
 
 # Dashboard
 streamlit==1.41.1

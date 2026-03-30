@@ -115,14 +115,26 @@ class Orchestrator(BaseAgent):
                     )
                     for entry_id, data in messages:
                         try:
-                            await client.post(
-                                f"{bot_url}/sendMessage",
-                                json={
-                                    "chat_id": data["chat_id"],
-                                    "text": data["text"],
-                                    "parse_mode": data.get("parse_mode", "Markdown"),
-                                },
+                            payload = {
+                                "chat_id": data["chat_id"],
+                                "text": data["text"],
+                                "parse_mode": data.get("parse_mode", "Markdown"),
+                            }
+                            if "reply_markup" in data:
+                                payload["reply_markup"] = data["reply_markup"]
+                            resp = await client.post(
+                                f"{bot_url}/sendMessage", json=payload,
                             )
+                            if resp.status_code != 200:
+                                resp_data = resp.json()
+                                if resp_data.get("description", "").find("parse") >= 0:
+                                    # Markdown parse error — retry without parse_mode
+                                    payload.pop("parse_mode", None)
+                                    await client.post(
+                                        f"{bot_url}/sendMessage", json=payload,
+                                    )
+                                else:
+                                    logger.error(f"Telegram API error: {resp_data}")
                         except Exception as e:
                             logger.error(f"Failed to send Telegram message: {e}")
                         await self.bus.stream_ack("telegram:outgoing", "orchestrator", entry_id)

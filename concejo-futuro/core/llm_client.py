@@ -172,7 +172,7 @@ class LLMClient:
         cached = await self.redis.get(key)
         if cached:
             logger.debug(f"Cache hit: {key}")
-            return cached.decode()
+            return cached if isinstance(cached, str) else cached.decode()
         return None
 
     async def _set_cache(self, voice: str, question: str, response: str):
