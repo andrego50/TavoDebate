@@ -3,12 +3,12 @@
 FAKE_NEWS = {
     1: {
         "text": (
-            "📰 *ÚLTIMA HORA — El Espectador:*\n\n"
+            "📰 *ÚLTIMA HORA — Pulzo:*\n\n"
             "'El Ministerio TIC confirmó que asignará $5.000M adicionales "
             "al SIADR si Cundinamarca lo aprueba antes del 30 de junio. "
             "Sería el proyecto de IA más grande de un departamento en "
             "Colombia.'\n\n"
-            "_Fuente: El Espectador, sección Tecnología_"
+            "_Fuente: Pulzo, sección Tecnología_"
         ),
         "is_fake": True,
         "reveal_text": (
@@ -21,12 +21,12 @@ FAKE_NEWS = {
     },
     2: {
         "text": (
-            "📰 *URGENTE — Semana:*\n\n"
+            "📰 *URGENTE — Las2Orillas:*\n\n"
             "'La Universidad Nacional advierte que el algoritmo del SIADR "
             "tiene un sesgo del 40% contra municipios de mayoría indígena. "
             "Un estudio de la Facultad de Ingeniería encontró que las "
             "variables del Art. 2 subvaloran territorios étnicos.'\n\n"
-            "_Fuente: Semana, sección Nación_"
+            "_Fuente: Las2Orillas, sección Nación_"
         ),
         "is_fake": True,
         "reveal_text": (
@@ -40,12 +40,12 @@ FAKE_NEWS = {
     },
     3: {
         "text": (
-            "📰 *EXCLUSIVA — Caracol Radio:*\n\n"
+            "📰 *EXCLUSIVA — Infobae Colombia:*\n\n"
             "'Tres concejales de la Bancada de Oposición ya confirmaron "
             "en privado que votarán A FAVOR del SIADR a cambio de que "
             "sus municipios sean incluidos en la Fase 1. La negociación "
             "se habría cerrado anoche en un restaurante de Zipaquirá.'\n\n"
-            "_Fuente: Caracol Radio, programa 6AM_"
+            "_Fuente: Infobae Colombia_"
         ),
         "is_fake": True,
         "reveal_text": (
@@ -58,12 +58,12 @@ FAKE_NEWS = {
     },
     4: {
         "text": (
-            "📰 *ALERTA — RCN Noticias:*\n\n"
+            "📰 *ALERTA — Kienyke:*\n\n"
             "'La Procuraduría General abrió investigación preliminar contra "
             "el Gobernador de Cundinamarca por presunto peculado en los "
             "recursos destinados al SIADR. Se habrían desviado $800M "
             "hacia contratos de publicidad.'\n\n"
-            "_Fuente: RCN Noticias_"
+            "_Fuente: Kienyke_"
         ),
         "is_fake": True,
         "reveal_text": (
@@ -77,12 +77,12 @@ FAKE_NEWS = {
     },
     5: {
         "text": (
-            "📰 *NOTICIA — Blu Radio:*\n\n"
+            "📰 *NOTICIA — La FM:*\n\n"
             "'Google y Microsoft expresaron interés en aportar tecnología "
             "gratuita al SIADR si Cundinamarca lo aprueba. Un vocero de "
             "Google Cloud dijo: Es exactamente el tipo de proyecto que "
             "buscamos apoyar en Latinoamérica.'\n\n"
-            "_Fuente: Blu Radio, sección Economía_"
+            "_Fuente: La FM, sección Economía_"
         ),
         "is_fake": True,
         "reveal_text": (
@@ -95,12 +95,12 @@ FAKE_NEWS = {
     },
     6: {
         "text": (
-            "📰 *BREAKING — W Radio:*\n\n"
+            "📰 *BREAKING — Publimetro Colombia:*\n\n"
             "'El Banco Mundial clasificó el SIADR de Cundinamarca como "
             "'modelo replicable' para América Latina. Si se aprueba, "
             "Colombia recibiría $20M USD en cooperación técnica para "
             "expandirlo a 5 departamentos más.'\n\n"
-            "_Fuente: W Radio, corresponsal en Washington_"
+            "_Fuente: Publimetro Colombia, corresponsal en Washington_"
         ),
         "is_fake": True,
         "reveal_text": (
