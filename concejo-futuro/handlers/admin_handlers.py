@@ -258,6 +258,37 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         })
         await agent._send_response(chat_id, f"Pantalla: modo {args.strip()}")
 
+    elif cmd == "asignar_rol":
+        await _handle_asignar_rol(agent, chat_id, args)
+
+    elif cmd == "roles":
+        # Show all users and their roles
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text(
+                    "SELECT nombre_completo, municipio, bancada_nombre, "
+                    "COALESCE(rol, 'concejal') as rol FROM users "
+                    "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador' "
+                    "ORDER BY rol, nombre_completo"
+                )
+            )
+            rows = result.fetchall()
+        if not rows:
+            await agent._send_response(chat_id, "No hay participantes registrados.")
+            return
+        from core.config import ROLES
+        lines = ["*Participantes y roles:*\n"]
+        current_rol = None
+        for name, mun, bancada, rol in rows:
+            rol_info = ROLES.get(rol, {})
+            rol_nombre = rol_info.get("nombre", rol)
+            if rol != current_rol:
+                current_rol = rol
+                lines.append(f"\n*{rol_nombre}*")
+            lines.append(f"  - {name} ({mun}) — {bancada}")
+        await agent._send_response(chat_id, "\n".join(lines))
+
     else:
         await agent._send_response(chat_id, f"Comando admin no reconocido: {cmd}")
 
@@ -371,43 +402,142 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
 
 
 async def _create_test_users(agent, chat_id: int):
-    """Crea 10 concejales ficticios para pruebas."""
-    from core.config import BANCADAS, PROVINCIAS_MUNICIPIOS
+    """Crea 15 participantes ficticios con roles variados."""
+    from core.config import BANCADAS
 
+    # (nombre, municipio, provincia, bancada_id, temas, rol)
     test_users = [
-        ("Juan Pérez", "Fusagasugá", "Sumapaz", 1, ["agro", "infraestructura"]),
-        ("María López", "Zipaquirá", "Sabana Centro", 2, ["ambiente", "agua"]),
-        ("Carlos Gómez", "Girardot", "Alto Magdalena", 3, ["agro", "educacion"]),
-        ("Ana Rodríguez", "Facatativá", "Sabana Occidente", 4, ["tecnologia", "comercio"]),
-        ("Pedro Martínez", "Chía", "Sabana Centro", 5, ["hacienda", "infraestructura"]),
-        ("Laura Torres", "Soacha", "Soacha", 6, ["derechos_humanos", "seguridad"]),
-        ("Diego Hernández", "La Mesa", "Tequendama", 1, ["turismo", "cultura"]),
-        ("Camila Vargas", "Pacho", "Rionegro", 2, ["salud", "mujer_genero"]),
-        ("Andrés Castro", "Guaduas", "Bajo Magdalena", 3, ["transporte", "mineria"]),
-        ("Sofía Ramírez", "Chocontá", "Almeidas", 4, ["juventud", "educacion"]),
+        # Gobierno (defienden proyecto)
+        ("Roberto Alcalde", "Bogotá", "Sabana Centro", 1, ["gobierno", "proyecto"], "alcalde"),
+        ("Diana Planeación", "Bogotá", "Sabana Centro", 1, ["datos", "metodologia"], "sec_planeacion"),
+        ("Fernando Hacienda", "Bogotá", "Sabana Centro", 1, ["presupuesto", "regalias"], "sec_hacienda"),
+        # Concejales (votan)
+        ("Juan Pérez", "Fusagasugá", "Sumapaz", 1, ["agro", "infraestructura"], "concejal"),
+        ("María López", "Zipaquirá", "Sabana Centro", 2, ["ambiente", "agua"], "concejal"),
+        ("Carlos Gómez", "Girardot", "Alto Magdalena", 3, ["agro", "educacion"], "concejal"),
+        ("Ana Rodríguez", "Facatativá", "Sabana Occidente", 4, ["tecnologia", "comercio"], "concejal"),
+        ("Pedro Martínez", "Chía", "Sabana Centro", 5, ["hacienda", "infraestructura"], "concejal"),
+        ("Laura Torres", "Soacha", "Soacha", 6, ["derechos_humanos", "seguridad"], "concejal"),
+        ("Diego Hernández", "La Mesa", "Tequendama", 1, ["turismo", "cultura"], "concejal"),
+        ("Camila Vargas", "Pacho", "Rionegro", 2, ["salud", "mujer_genero"], "concejal"),
+        # Sociedad civil + control
+        ("Rosa Campesina", "Cabrera", "Sumapaz", 3, ["campo", "agua"], "lider_campesino"),
+        ("Tomás Ambientalista", "Guasca", "Guavio", 6, ["ambiente", "ecosistemas"], "ambientalista"),
+        ("Gloria Veedora", "Ubaté", "Ubaté", 6, ["transparencia", "control"], "veedor"),
+        ("Sergio TechCundi", "Bogotá", "Sabana Centro", 4, ["tecnologia", "iot"], "empresa_tech"),
     ]
 
     async with get_session() as session:
         from sqlalchemy import text as sql_text
-        for i, (nombre, mun, prov, bid, temas) in enumerate(test_users):
+        for i, (nombre, mun, prov, bid, temas, rol) in enumerate(test_users):
             tid = 900000000 + i
             bancada = BANCADAS[bid]
             await session.execute(
                 sql_text(
                     "INSERT INTO users (telegram_id, username, nombre_completo, municipio, "
-                    "provincia, bancada_id, bancada_nombre, temas_interes, onboarding_complete) "
-                    "VALUES (:tid, :un, :name, :mun, :prov, :bid, :bname, :temas, true) "
-                    "ON CONFLICT (telegram_id) DO NOTHING"
+                    "provincia, bancada_id, bancada_nombre, temas_interes, onboarding_complete, rol) "
+                    "VALUES (:tid, :un, :name, :mun, :prov, :bid, :bname, :temas, true, :rol) "
+                    "ON CONFLICT (telegram_id) DO UPDATE SET rol = :rol, nombre_completo = :name"
                 ),
                 {
                     "tid": tid, "un": f"test_user_{i}",
                     "name": nombre, "mun": mun, "prov": prov,
                     "bid": bid, "bname": bancada["nombre"],
-                    "temas": temas,
+                    "temas": temas, "rol": rol,
                 },
             )
 
-    await agent._send_response(chat_id, "10 usuarios de prueba creados.")
+    await agent._send_response(
+        chat_id,
+        "15 participantes de prueba creados:\n"
+        "- 1 Alcalde + 2 Secretarios (gobierno)\n"
+        "- 8 Concejales (votan)\n"
+        "- 1 Líder campesino + 1 Ambientalista + 1 Veedora + 1 Empresa Tech"
+    )
+
+
+async def _handle_asignar_rol(agent, chat_id: int, args: str):
+    """Asigna un rol institucional a un participante.
+
+    /asignar_rol → muestra menú de participantes
+    /asignar_rol <nombre_parcial> <rol>
+    """
+    from core.config import ROLES
+
+    if not args.strip():
+        # Show inline keyboard with roles
+        keyboard = []
+        for rol_key, rol_info in ROLES.items():
+            if rol_key == "concejal":
+                continue  # Default, no need to assign
+            keyboard.append([{
+                "text": f"{rol_info['nombre']}",
+                "callback_data": f"assign_role_{rol_key}",
+            }])
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                "👤 *Asignar rol institucional*\n\n"
+                "Selecciona el rol, luego te pido el nombre del participante.\n\n"
+                "O usa: `/asignar_rol <nombre> <rol>`\n"
+                "Ejemplo: `/asignar_rol Juan alcalde`\n\n"
+                "Roles disponibles:\n" +
+                "\n".join(f"  `{k}` — {v['nombre']}" for k, v in ROLES.items() if k != "concejal")
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+        })
+        return
+
+    # Parse: /asignar_rol <nombre_parcial> <rol>
+    parts = args.strip().rsplit(" ", 1)
+    if len(parts) < 2:
+        await agent._send_response(chat_id, "Uso: `/asignar_rol <nombre> <rol>`")
+        return
+
+    nombre_parcial = parts[0].strip()
+    rol_key = parts[1].strip().lower()
+
+    if rol_key not in ROLES:
+        await agent._send_response(chat_id, f"Rol '{rol_key}' no existe. Usa `/asignar_rol` para ver opciones.")
+        return
+
+    async with get_session() as session:
+        from sqlalchemy import text as sql_text
+        result = await session.execute(
+            sql_text(
+                "SELECT id, nombre_completo, telegram_id FROM users "
+                "WHERE LOWER(nombre_completo) LIKE :pattern AND onboarding_complete = true "
+                "LIMIT 1"
+            ),
+            {"pattern": f"%{nombre_parcial.lower()}%"},
+        )
+        user = result.fetchone()
+        if not user:
+            await agent._send_response(chat_id, f"No encontré a nadie con nombre '{nombre_parcial}'.")
+            return
+
+        await session.execute(
+            sql_text("UPDATE users SET rol = :rol WHERE id = :uid"),
+            {"rol": rol_key, "uid": user[0]},
+        )
+
+    rol_info = ROLES[rol_key]
+    await agent._send_response(
+        chat_id,
+        f"✅ *{user[1]}* ahora es *{rol_info['nombre']}*"
+    )
+    # Notify the user
+    await agent.bus.stream_add("telegram:outgoing", {
+        "chat_id": str(user[2]),
+        "text": (
+            f"🎭 *Tu rol ha sido asignado:*\n\n"
+            f"*{rol_info['nombre']}*\n"
+            f"_{rol_info['descripcion']}_\n\n"
+            f"{'🗳️ Puedes votar el proyecto.' if rol_info['puede_votar'] else '📢 No votas, pero puedes opinar, tuitear y participar en el debate.'}"
+        ),
+        "parse_mode": "Markdown",
+    })
 
 
 async def _get_pantalla_url() -> str:
@@ -450,9 +580,21 @@ async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
                 "parse_mode": "Markdown",
             })
 
+        # Send PDF presentation
+        from pathlib import Path
+        pdf_path = str(Path(__file__).parent.parent / "static" / "ponencia_siadr.pdf")
+        for tid in concejales:
+            await agent.bus.stream_add("telegram:outgoing", {
+                "type": "document",
+                "chat_id": str(tid),
+                "file_path": pdf_path,
+                "caption": "📊 Presentación — Proyecto de Acuerdo 001-2026 SIADR",
+                "parse_mode": "Markdown",
+            })
+
         await agent._send_response(
             admin_chat_id,
-            f"📨 Ponencia del Alcalde enviada a *{len(concejales)}* concejales."
+            f"📨 Ponencia + PDF enviados a *{len(concejales)}* concejales."
         )
 
     elif fase_key == "votacion":

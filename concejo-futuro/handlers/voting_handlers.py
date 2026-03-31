@@ -13,6 +13,22 @@ async def handle_votar_proyecto(agent, user_id: int, chat_id: int, args: str):
     async with get_session() as session:
         from sqlalchemy import text as sql_text
 
+        # Check if user has a voting role
+        rol_result = await session.execute(
+            sql_text("SELECT COALESCE(rol, 'concejal') FROM users WHERE telegram_id = :tid"),
+            {"tid": user_id},
+        )
+        user_rol = rol_result.scalar()
+        if user_rol and user_rol != "concejal":
+            from core.config import ROLES
+            rol_info = ROLES.get(user_rol, {})
+            await agent._send_response(
+                chat_id,
+                f"Tu rol es *{rol_info.get('nombre', user_rol)}* — no votas el proyecto.\n"
+                "Solo los concejales pueden votar."
+            )
+            return
+
         # Check active session
         result = await session.execute(
             sql_text(

@@ -210,6 +210,7 @@ class ChatAgent(BaseAgent):
             "/broadcast", "/bomba", "/fakenews", "/presion", "/gabinete_remover",
             "/gabinete_amenaza", "/alerta", "/fase", "/ronda", "/tweet",
             "/llm", "/modo_test", "/briefing", "/pantalla",
+            "/asignar_rol", "/roles",
         ):
             if user_id in settings.admin_ids:
                 from handlers.admin_handlers import handle_admin_command
@@ -367,6 +368,16 @@ class ChatAgent(BaseAgent):
             if user_id in settings.admin_ids:
                 from handlers.admin_handlers import handle_admin_callback
                 await handle_admin_callback(self, user_id, chat_id, data, callback_id)
+        elif data.startswith("assign_role_"):
+            if user_id in settings.admin_ids:
+                rol_key = data.replace("assign_role_", "")
+                from core.config import ROLES
+                rol_info = ROLES.get(rol_key, {})
+                await self._send_response(
+                    chat_id,
+                    f"Escribe el nombre del participante para asignar *{rol_info.get('nombre', rol_key)}*:\n\n"
+                    f"`/asignar_rol <nombre> {rol_key}`"
+                )
         elif data.startswith("fase_"):
             if user_id in settings.admin_ids:
                 fase_key = data.split("_", 1)[1]

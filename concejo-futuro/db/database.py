@@ -33,9 +33,13 @@ async def get_session():
 
 
 async def init_db():
-    """Verificar conexión a la base de datos."""
+    """Verificar conexión y aplicar migraciones ligeras."""
     async with engine.begin() as conn:
         await conn.execute(text("SELECT 1"))
+        # Add rol column if missing
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS rol VARCHAR(30) DEFAULT 'concejal'"
+        ))
     logger.info("Database connection established")
 
 

@@ -71,6 +71,117 @@ BANCADAS = {
     6: {"nombre": "👁️ Veeduría", "posicion": "CONTROL SOCIAL"},
 }
 
+# Roles del ejercicio — algunos votan, otros participan sin voto
+ROLES = {
+    # === CONCEJALES (votan) ===
+    "concejal": {
+        "nombre": "🏛️ Concejal",
+        "grupo": "concejo",
+        "descripcion": "Representante del Concejo — vota el proyecto",
+        "puede_votar": True,
+    },
+    # === GOBIERNO (defienden el proyecto, no votan) ===
+    "alcalde": {
+        "nombre": "👔 Alcalde Proponente",
+        "grupo": "gobierno",
+        "descripcion": "Defiende el proyecto SIADR ante el Concejo",
+        "puede_votar": False,
+    },
+    "sec_planeacion": {
+        "nombre": "📐 Secretario de Planeación",
+        "grupo": "gobierno",
+        "descripcion": "Datos técnicos, viabilidad y metodología del SIADR",
+        "puede_votar": False,
+    },
+    "sec_hacienda": {
+        "nombre": "💰 Secretario de Hacienda",
+        "grupo": "gobierno",
+        "descripcion": "Presupuesto, regalías y sostenibilidad financiera",
+        "puede_votar": False,
+    },
+    "sec_agricultura": {
+        "nombre": "🌾 Secretario de Agricultura",
+        "grupo": "gobierno",
+        "descripcion": "Componente agro, UMATA y familias campesinas",
+        "puede_votar": False,
+    },
+    "dir_tic": {
+        "nombre": "📡 Director de TIC",
+        "grupo": "gobierno",
+        "descripcion": "Conectividad, infraestructura tecnológica e IoT",
+        "puede_votar": False,
+    },
+    "dir_umata": {
+        "nombre": "🧑‍🌾 Director UMATA",
+        "grupo": "gobierno",
+        "descripcion": "Puente entre tecnología y comunidades campesinas",
+        "puede_votar": False,
+    },
+    # === SOCIEDAD CIVIL (opinan, presionan, no votan) ===
+    "lider_campesino": {
+        "nombre": "🧑‍🌾 Líder Campesino",
+        "grupo": "sociedad_civil",
+        "descripcion": "Representa a comunidades rurales y veredas",
+        "puede_votar": False,
+    },
+    "lider_indigena": {
+        "nombre": "🪶 Líder Indígena",
+        "grupo": "sociedad_civil",
+        "descripcion": "Derechos étnicos y consulta previa",
+        "puede_votar": False,
+    },
+    "lider_jac": {
+        "nombre": "🏘️ Líder JAC",
+        "grupo": "sociedad_civil",
+        "descripcion": "Junta de Acción Comunal — necesidades locales",
+        "puede_votar": False,
+    },
+    "ambientalista": {
+        "nombre": "🌿 Ambientalista",
+        "grupo": "sociedad_civil",
+        "descripcion": "Impacto ambiental, agua y ecosistemas",
+        "puede_votar": False,
+    },
+    "periodista": {
+        "nombre": "📰 Periodista",
+        "grupo": "sociedad_civil",
+        "descripcion": "Investiga y publica sobre el debate",
+        "puede_votar": False,
+    },
+    # === SECTOR PRIVADO / EMPRESA ===
+    "empresa_tech": {
+        "nombre": "🏢 Empresa TechCundi",
+        "grupo": "empresa",
+        "descripcion": "Consorcio que ejecutaría el SIADR",
+        "puede_votar": False,
+    },
+    "gremio_agro": {
+        "nombre": "🌽 Gremio Agrícola",
+        "grupo": "empresa",
+        "descripcion": "Representa agricultores y productores",
+        "puede_votar": False,
+    },
+    # === CONTROL / INSTITUCIONAL ===
+    "contralor": {
+        "nombre": "📋 Contralor Departamental",
+        "grupo": "control",
+        "descripcion": "Vigila el uso de recursos públicos",
+        "puede_votar": False,
+    },
+    "personero": {
+        "nombre": "⚖️ Personero Municipal",
+        "grupo": "control",
+        "descripcion": "Derechos ciudadanos y legalidad del proceso",
+        "puede_votar": False,
+    },
+    "veedor": {
+        "nombre": "👁️ Veedor Ciudadano",
+        "grupo": "control",
+        "descripcion": "Control social y transparencia",
+        "puede_votar": False,
+    },
+}
+
 PROVINCIAS_MUNICIPIOS = {
     "Almeidas": ["Chocontá", "Machetá", "Manta", "Sesquilé", "Suesca", "Tibirita", "Villapinzón"],
     "Alto Magdalena": ["Agua de Dios", "Girardot", "Guataquí", "Jerusalén", "Nariño", "Nilo", "Ricaurte", "Tocaima"],

@@ -174,26 +174,49 @@ class Orchestrator(BaseAgent):
                     )
                     for entry_id, data in messages:
                         try:
-                            payload = {
-                                "chat_id": data["chat_id"],
-                                "text": data["text"],
-                                "parse_mode": data.get("parse_mode", "Markdown"),
-                            }
-                            if "reply_markup" in data:
-                                payload["reply_markup"] = data["reply_markup"]
-                            resp = await client.post(
-                                f"{bot_url}/sendMessage", json=payload,
-                            )
-                            if resp.status_code != 200:
-                                resp_data = resp.json()
-                                if resp_data.get("description", "").find("parse") >= 0:
-                                    # Markdown parse error — retry without parse_mode
-                                    payload.pop("parse_mode", None)
-                                    await client.post(
-                                        f"{bot_url}/sendMessage", json=payload,
-                                    )
+                            msg_type = data.get("type", "message")
+
+                            if msg_type == "document":
+                                # Send file via sendDocument (multipart)
+                                import os
+                                file_path = data.get("file_path", "")
+                                if os.path.exists(file_path):
+                                    with open(file_path, "rb") as f:
+                                        form_data = {
+                                            "chat_id": (None, data["chat_id"]),
+                                            "caption": (None, data.get("caption", "")),
+                                        }
+                                        if data.get("parse_mode"):
+                                            form_data["parse_mode"] = (None, data["parse_mode"])
+                                        resp = await client.post(
+                                            f"{bot_url}/sendDocument",
+                                            files={"document": (os.path.basename(file_path), f, "application/pdf")},
+                                            data={"chat_id": data["chat_id"], "caption": data.get("caption", ""), "parse_mode": data.get("parse_mode", "")},
+                                        )
+                                        if resp.status_code != 200:
+                                            logger.error(f"sendDocument error: {resp.json()}")
                                 else:
-                                    logger.error(f"Telegram API error: {resp_data}")
+                                    logger.error(f"Document not found: {file_path}")
+                            else:
+                                payload = {
+                                    "chat_id": data["chat_id"],
+                                    "text": data["text"],
+                                    "parse_mode": data.get("parse_mode", "Markdown"),
+                                }
+                                if "reply_markup" in data:
+                                    payload["reply_markup"] = data["reply_markup"]
+                                resp = await client.post(
+                                    f"{bot_url}/sendMessage", json=payload,
+                                )
+                                if resp.status_code != 200:
+                                    resp_data = resp.json()
+                                    if resp_data.get("description", "").find("parse") >= 0:
+                                        payload.pop("parse_mode", None)
+                                        await client.post(
+                                            f"{bot_url}/sendMessage", json=payload,
+                                        )
+                                    else:
+                                        logger.error(f"Telegram API error: {resp_data}")
                         except Exception as e:
                             logger.error(f"Failed to send Telegram message: {e}")
                         await self.bus.stream_ack("telegram:outgoing", "orchestrator", entry_id)
