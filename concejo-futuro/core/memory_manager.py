@@ -35,7 +35,7 @@ ROLE_INSTRUCTIONS = {
 }
 
 
-async def build_system_prompt(user: dict, session=None) -> str:
+async def build_system_prompt(user: dict, session=None, advisor_key: str = None) -> str:
     """Construye el system prompt personalizado para un participante."""
     bancada_id = user.get("bancada_id", 1)
     bancada = BANCADAS.get(bancada_id, BANCADAS[1])
@@ -71,7 +71,20 @@ async def build_system_prompt(user: dict, session=None) -> str:
     if session:
         live_context = await _get_live_context(user, bancada_id, session)
 
-    return f"{base}{role_section}\n\n--- VOZ ACTIVA ---\n{voice_prompt}\n\n{live_context}"
+    # Add advisor section
+    advisor_section = ""
+    if advisor_key:
+        from core.advisors import get_advisor_prompt
+        advisor_prompt = get_advisor_prompt(advisor_key)
+        advisor_section = (
+            f"\n\n--- ASESOR ACTIVO ---\n{advisor_prompt}\n\n"
+            "BÚSQUEDA WEB: Si necesitas información actualizada para responder, "
+            "puedes solicitar una búsqueda escribiendo en tu respuesta:\n"
+            "<<<BUSCAR>>>tu consulta aquí<<<FIN_BUSCAR>>>\n"
+            "Se te proporcionarán los resultados y podrás usarlos para dar una respuesta mejor fundamentada."
+        )
+
+    return f"{base}{role_section}\n\n--- VOZ ACTIVA ---\n{voice_prompt}{advisor_section}\n\n{live_context}"
 
 
 async def _get_live_context(user: dict, bancada_id: int, session) -> str:

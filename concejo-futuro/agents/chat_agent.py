@@ -149,6 +149,18 @@ class ChatAgent(BaseAgent):
             await handle_preparar_ponencia(self, user_id, chat_id, args)
         elif command == "/tuitear":
             await self._handle_tuitear(user_id, chat_id, args)
+        elif command == "/asesores":
+            from core.advisors import get_advisor_keyboard, ADVISORS
+            current = await self._get_active_advisor(user_id)
+            adv_info = ADVISORS.get(current, {})
+            keyboard = json.dumps({"inline_keyboard": get_advisor_keyboard()})
+            await self._send_response(
+                chat_id,
+                f"🧠 *Panel de Asesores*\n\n"
+                f"Asesor activo: {adv_info.get('emoji', '')} {adv_info.get('nombre', current)}\n\n"
+                f"Selecciona un asesor:",
+                reply_markup=keyboard,
+            )
         # Voice switch commands
         elif command in ("/ciudadano", "/experto", "/contralor", "/empresa", "/alcalde"):
             voice_name = command[1:]  # Remove /
@@ -243,15 +255,31 @@ class ChatAgent(BaseAgent):
                 )
                 return
 
-            # Build prompt and generate
-            system_prompt = await build_system_prompt(user, session)
+            # Get active advisor and build prompt
+            advisor_key = await self._get_active_advisor(user_id)
+            system_prompt = await build_system_prompt(user, session, advisor_key=advisor_key)
             voice = user.get("active_voice", "asesor_neutral")
             response = await self.llm.generate(
-                system_prompt, text, cache_voice=voice
+                system_prompt, text, cache_voice=f"{voice}_{advisor_key}"
             )
 
-            # Clean LLM artifacts from response
+            # Handle web search if LLM requested one
             import re
+            search_match = re.search(r'<<<BUSCAR>>>(.*?)<<<FIN_BUSCAR>>>', response, re.DOTALL)
+            if search_match:
+                query = search_match.group(1).strip()
+                from core.web_search import search_web
+                search_results = await search_web(query)
+                augmented = (
+                    f"{text}\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{search_results}\n\n"
+                    "Usa estos resultados para complementar tu respuesta al participante."
+                )
+                response = await self.llm.generate(
+                    system_prompt, augmented, cache_voice=f"{voice}_{advisor_key}_search",
+                    use_cache=False,
+                )
+
+            # Clean LLM artifacts from response
             response = re.sub(r'<<<[^>]+>>>', '', response).strip()
             response = re.sub(r'\{[^}]*"tipo_alerta"[^}]*\}', '', response).strip()
 
@@ -274,8 +302,8 @@ class ChatAgent(BaseAgent):
                 sql_text(
                     "INSERT INTO interactions (user_id, telegram_id, nombre_concejal, "
                     "municipio, provincia, bancada_id, bancada_nombre, question, response, "
-                    "voice_used) "
-                    "VALUES (:uid, :tid, :nombre, :mun, :prov, :bid, :bname, :q, :r, :v) "
+                    "voice_used, advisor_used) "
+                    "VALUES (:uid, :tid, :nombre, :mun, :prov, :bid, :bname, :q, :r, :v, :adv) "
                     "RETURNING id"
                 ),
                 {
@@ -286,6 +314,7 @@ class ChatAgent(BaseAgent):
                     "bid": user.get("bancada_id"),
                     "bname": user.get("bancada_nombre", ""),
                     "q": text, "r": response, "v": voice,
+                    "adv": advisor_key,
                 },
             )
             interaction_id = result.scalar()
@@ -314,7 +343,12 @@ class ChatAgent(BaseAgent):
         if coords:
             await self.bus.raw.publish("interaction:live", json.dumps(event_data))
 
-        await self._send_response(chat_id, response)
+        # Send response with advisor bar (5 emoji buttons)
+        from core.advisors import get_advisor_bar, ADVISORS
+        adv_info = ADVISORS.get(advisor_key, {})
+        advisor_label = f"\n\n_{adv_info.get('emoji', '')} {adv_info.get('nombre', '')}_"
+        bar = json.dumps({"inline_keyboard": get_advisor_bar()})
+        await self._send_response(chat_id, response + advisor_label, reply_markup=bar)
 
     async def _handle_voice(self, user_id: int, chat_id: int, message: dict):
         """Envía nota de voz al Agente Audio para transcripción."""
@@ -368,6 +402,18 @@ class ChatAgent(BaseAgent):
             if user_id in settings.admin_ids:
                 from handlers.admin_handlers import handle_admin_callback
                 await handle_admin_callback(self, user_id, chat_id, data, callback_id)
+        elif data.startswith("advisor_"):
+            advisor_key = data.replace("advisor_", "")
+            await self._set_active_advisor(user_id, advisor_key)
+            from core.advisors import ADVISORS, get_advisor_bar
+            adv = ADVISORS.get(advisor_key, {})
+            bar = json.dumps({"inline_keyboard": get_advisor_bar()})
+            await self._send_response(
+                chat_id,
+                f"{adv.get('emoji', '')} Asesor cambiado a *{adv.get('nombre', advisor_key)}*\n\n"
+                f"Escribe tu pregunta o usa /asesores para ver el panel completo.",
+                reply_markup=bar,
+            )
         elif data.startswith("assign_role_"):
             if user_id in settings.admin_ids:
                 rol_key = data.replace("assign_role_", "")
@@ -492,13 +538,30 @@ class ChatAgent(BaseAgent):
 
         await self._send_response(chat_id, f"🐦 Tu tweet fue publicado en la pantalla:\n\n*{handle}*: {tweet_text[:200]}")
 
-    async def _send_response(self, chat_id: int, text: str, parse_mode: str = "Markdown"):
+    async def _get_active_advisor(self, telegram_id: int) -> str:
+        """Obtiene el asesor activo del usuario desde Redis."""
+        key = f"advisor:{telegram_id}"
+        advisor = await self.bus.raw.get(key)
+        if isinstance(advisor, bytes):
+            advisor = advisor.decode()
+        return advisor or "juridico"
+
+    async def _set_active_advisor(self, telegram_id: int, advisor_key: str):
+        """Guarda el asesor activo en Redis con TTL de 24h."""
+        key = f"advisor:{telegram_id}"
+        await self.bus.raw.setex(key, 86400, advisor_key)
+
+    async def _send_response(self, chat_id: int, text: str, parse_mode: str = "Markdown",
+                             reply_markup: str = None):
         """Envía respuesta al usuario via telegram:outgoing stream."""
-        await self.bus.stream_add("telegram:outgoing", {
+        data = {
             "chat_id": str(chat_id),
             "text": text,
             "parse_mode": parse_mode,
-        })
+        }
+        if reply_markup:
+            data["reply_markup"] = reply_markup
+        await self.bus.stream_add("telegram:outgoing", data)
 
     async def shutdown(self):
         if self.llm:

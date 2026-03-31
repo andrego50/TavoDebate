@@ -24,6 +24,9 @@ streamlit==1.41.1
 # Alerts (Playwright)
 playwright==1.49.1
 
+# Web search
+duckduckgo-search>=7.0.0
+
 # Utils
 python-dotenv==1.0.1
 pydantic==2.10.4

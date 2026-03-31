@@ -40,6 +40,9 @@ async def init_db():
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS rol VARCHAR(30) DEFAULT 'concejal'"
         ))
+        await conn.execute(text(
+            "ALTER TABLE interactions ADD COLUMN IF NOT EXISTS advisor_used VARCHAR(30) DEFAULT NULL"
+        ))
     logger.info("Database connection established")
 
 
