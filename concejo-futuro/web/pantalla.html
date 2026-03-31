@@ -35,6 +35,16 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; colo
 /* === TWITTER PANEL === */
 .tweet { background: #16181c; border: 1px solid #2f3336; border-radius: 12px; padding: 12px; margin-bottom: 8px; }
 .tweet.reply { margin-left: 30px; border-left: 2px solid #1d9bf0; }
+.tweet.quote { border: 1px solid #2f3336; }
+.tweet .quoted-tweet { background: #1a1a2e; border: 1px solid #2f3336; border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 13px; color: #aaa; }
+.tweet .quoted-tweet .qt-author { font-weight: bold; color: #ccc; font-size: 12px; }
+.tweet .concejal-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px; color: #fff; }
+.tweet .badge-gobierno { background: #1a5276; }
+.tweet .badge-oposicion { background: #7b241c; }
+.tweet .badge-rural { background: #196f3d; }
+.tweet .badge-urbana { background: #6c3483; }
+.tweet .badge-presupuesto { background: #b7950b; }
+.tweet .badge-veeduria { background: #784212; }
 .tweet-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .tweet-avatar { width: 36px; height: 36px; border-radius: 50%; background: #2d2d2d; display: flex; align-items: center; justify-content: center; font-size: 18px; }
 .tweet-name { font-weight: bold; font-size: 14px; }
@@ -217,21 +227,70 @@ function handleEvent(channel, data) {
 // === Tweet Functions ===
 function addTweet(data) {
     const feed = document.getElementById('tweetFeed');
-    const isReply = data.reply_to ? true : false;
+    const isReply = data.is_reply || data.reply_to;
+    const isQuote = data.is_quote || false;
+    const isConcejal = data.is_concejal || false;
     const verified = data.verified ? '<span class="tweet-verified">✓</span>' : '';
-    const avatar = data.author?.charAt(0) || '?';
+    const avatar = data.author?.replace('@','').charAt(0) || '?';
+
+    // Build bancada badge for concejal tweets
+    let badge = '';
+    if (isConcejal && data.bancada) {
+        const b = data.bancada.toLowerCase();
+        let cls = 'badge-gobierno';
+        if (b.includes('oposición') || b.includes('oposicion')) cls = 'badge-oposicion';
+        else if (b.includes('rural')) cls = 'badge-rural';
+        else if (b.includes('urban')) cls = 'badge-urbana';
+        else if (b.includes('presupuesto')) cls = 'badge-presupuesto';
+        else if (b.includes('veeduría') || b.includes('veeduria')) cls = 'badge-veeduria';
+        badge = `<span class="concejal-badge ${cls}">${data.bancada}</span>`;
+    }
+
+    // Handle quote tweet: extract quoted author and show as embedded
+    let quotedHtml = '';
+    let tweetText = data.text || '';
+    if (isQuote && tweetText.toUpperCase().startsWith('RT ')) {
+        // Parse "RT @Author Original comment" → show as quote
+        const rtMatch = tweetText.match(/^RT\s+(@\w+)\s+(.*)/i);
+        if (rtMatch) {
+            const qtAuthor = rtMatch[1];
+            // Find original tweet in feed
+            const origTweets = feed.querySelectorAll('.tweet');
+            let origText = '';
+            for (const tw of origTweets) {
+                const name = tw.querySelector('.tweet-name')?.textContent;
+                if (name === qtAuthor) { origText = tw.querySelector('.tweet-text')?.textContent?.substring(0, 120); break; }
+            }
+            quotedHtml = `<div class="quoted-tweet"><span class="qt-author">${qtAuthor}</span><br>${origText || '...'}</div>`;
+            tweetText = rtMatch[2];
+        }
+    }
+
+    // Handle reply: highlight the @mention
+    let replyHeader = '';
+    if (isReply && tweetText.startsWith('@')) {
+        const mentionMatch = tweetText.match(/^(@\w+)\s/);
+        if (mentionMatch) {
+            replyHeader = `<div style="color:#71767b;font-size:12px;margin-bottom:4px">Respondiendo a ${mentionMatch[1]}</div>`;
+        }
+    }
+
+    // Subtitle with municipio
+    const subtitle = data.municipio ? `<span class="tweet-handle">${data.municipio}</span>` : (data.handle || '');
 
     const el = document.createElement('div');
-    el.className = `tweet ${isReply ? 'reply' : ''}`;
+    el.className = `tweet ${isReply ? 'reply' : ''} ${isQuote ? 'quote' : ''}`;
     el.innerHTML = `
         <div class="tweet-header">
             <div class="tweet-avatar">${avatar}</div>
             <div>
-                <span class="tweet-name">${data.author || 'Anon'}</span> ${verified}
-                <span class="tweet-handle">${data.handle || ''}</span>
+                <span class="tweet-name">${data.author || 'Anon'}</span> ${verified} ${badge}
+                ${subtitle}
             </div>
         </div>
-        <div class="tweet-text">${formatTweet(data.text || '')}</div>
+        ${replyHeader}
+        <div class="tweet-text">${formatTweet(tweetText)}</div>
+        ${quotedHtml}
         <div class="tweet-metrics">
             <span>❤️ <span class="likes">${Math.floor(Math.random()*50)}</span></span>
             <span>🔄 <span class="rts">${Math.floor(Math.random()*20)}</span></span>

@@ -110,6 +110,7 @@ class Orchestrator(BaseAgent):
             {"command": "empresa", "description": "Voz: Empresa tech"},
             {"command": "alcalde", "description": "Voz: Alcalde proponente"},
             {"command": "preparar_ponencia", "description": "IA te ayuda a armar tu ponencia"},
+            {"command": "tuitear", "description": "Publicar tweet en pantalla"},
             {"command": "proponer", "description": "Proponer enmienda"},
             {"command": "propuestas_todas", "description": "Ver todas las propuestas"},
             {"command": "votar_proyecto", "description": "Votar el proyecto"},

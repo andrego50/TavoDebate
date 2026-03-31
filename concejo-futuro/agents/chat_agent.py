@@ -147,6 +147,8 @@ class ChatAgent(BaseAgent):
         elif command == "/preparar_ponencia":
             from handlers.ponencia_handler import handle_preparar_ponencia
             await handle_preparar_ponencia(self, user_id, chat_id, args)
+        elif command == "/tuitear":
+            await self._handle_tuitear(user_id, chat_id, args)
         # Voice switch commands
         elif command in ("/ciudadano", "/experto", "/contralor", "/empresa", "/alcalde"):
             voice_name = command[1:]  # Remove /
@@ -422,6 +424,62 @@ class ChatAgent(BaseAgent):
                     return cmd
 
         return None
+
+    async def _handle_tuitear(self, user_id: int, chat_id: int, text: str):
+        """Permite a cualquier concejal publicar un tweet en la pantalla.
+
+        Formatos:
+        - /tuitear Esto es mi opinión sobre el SIADR
+        - /tuitear RT @JuanPerez Estoy de acuerdo con esto
+        - /tuitear @MariaLopez No estoy de acuerdo, los datos son viejos
+        """
+        if not text.strip():
+            await self._send_response(
+                chat_id,
+                "🐦 *¿Qué quieres tuitear?*\n\n"
+                "Escribe: `/tuitear Tu opinión aquí`\n"
+                "Citar: `/tuitear RT @usuario Comentario`\n"
+                "Responder: `/tuitear @usuario Tu respuesta`"
+            )
+            return
+
+        # Get user info for the tweet author handle
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("SELECT nombre_completo, municipio, bancada_nombre FROM users WHERE telegram_id = :tid"),
+                {"tid": user_id},
+            )
+            user = result.mappings().first()
+
+        if not user:
+            await self._send_response(chat_id, "Debes registrarte primero con /start")
+            return
+
+        # Build author handle from name: "Juan Pérez" -> "@JuanPerez"
+        nombre = user["nombre_completo"]
+        handle = "@" + "".join(w.capitalize() for w in nombre.split()[:2])
+        municipio = user["municipio"]
+        bancada = user["bancada_nombre"]
+
+        tweet_text = text.strip()
+
+        # Detect quote tweet (RT @someone ...)
+        is_quote = tweet_text.upper().startswith("RT ")
+        # Detect reply (@someone ...)
+        is_reply = tweet_text.startswith("@") and not is_quote
+
+        await self.bus.publish("tweet:new", {
+            "author": handle,
+            "text": tweet_text,
+            "municipio": municipio,
+            "bancada": bancada,
+            "is_quote": is_quote,
+            "is_reply": is_reply,
+            "is_concejal": True,
+        })
+
+        await self._send_response(chat_id, f"🐦 Tu tweet fue publicado en la pantalla:\n\n*{handle}*: {tweet_text[:200]}")
 
     async def _send_response(self, chat_id: int, text: str, parse_mode: str = "Markdown"):
         """Envía respuesta al usuario via telegram:outgoing stream."""
