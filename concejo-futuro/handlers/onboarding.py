@@ -209,19 +209,20 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
                 {"mun": municipio, "prov": provincia, "tid": user_id},
             )
 
-        # Step 3: Show bancadas
-        keyboard = []
-        for bid, bancada in BANCADAS.items():
-            keyboard.append([{
-                "text": f"{bancada['nombre']} — {bancada['posicion']}",
-                "callback_data": f"onboard_ban_{bid}",
-            }])
+        # Step 3: Show posición sobre el proyecto (3 opciones simples)
+        keyboard = [
+            [{"text": "✅ A FAVOR del proyecto", "callback_data": "onboard_ban_1"}],
+            [{"text": "❌ EN CONTRA del proyecto", "callback_data": "onboard_ban_2"}],
+            [{"text": "🤔 INDECISO / depende", "callback_data": "onboard_ban_4"}],
+        ]
 
         await agent.bus.stream_add("telegram:outgoing", {
             "chat_id": str(chat_id),
             "text": (
                 f"Registrado: *{municipio}* ({provincia})\n\n"
-                "*Paso 3 de 4:* Selecciona tu bancada:"
+                "*Paso 3 de 4:* ¿Cuál es tu posición inicial sobre el "
+                "Proyecto de Acuerdo 001-2026 (SIADR)?\n\n"
+                "_Puedes cambiar de opinión durante el debate._"
             ),
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
@@ -242,9 +243,12 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
                 {"bid": bancada_id, "bname": bancada["nombre"], "tid": user_id},
             )
 
+        posicion_label = {1: "✅ A FAVOR", 2: "❌ EN CONTRA", 4: "🤔 INDECISO"}.get(
+            bancada_id, bancada["nombre"]
+        )
         await agent._send_response(
             chat_id,
-            f"Bancada: {bancada['nombre']}\n\n"
+            f"Posición inicial: {posicion_label}\n\n"
             f"*Paso 4 de 4:* Cuéntame en tus propias palabras, "
             f"¿qué temas o causas defiendes como concejal? "
             f"¿Qué te apasiona de tu labor?\n\n"
