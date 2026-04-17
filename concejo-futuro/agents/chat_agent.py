@@ -398,7 +398,11 @@ class ChatAgent(BaseAgent):
         elif data.startswith("onboard_"):
             from handlers.onboarding import handle_onboard_callback
             await handle_onboard_callback(self, user_id, chat_id, data, callback_id)
-        elif data.startswith(("preview_", "send_", "cancel_")):
+        elif data.startswith((
+            "preview_", "send_", "cancel_",
+            "regen_draft_", "confirm_modo_test", "confirm_briefing",
+            "ronda_start_", "pantalla_mode_",
+        )):
             if user_id in settings.admin_ids:
                 from handlers.admin_handlers import handle_admin_callback
                 await handle_admin_callback(self, user_id, chat_id, data, callback_id)

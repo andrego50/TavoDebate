@@ -55,7 +55,7 @@ async def _build_context_snapshot() -> str:
 
 
 async def _generate_draft(agent, kind: str, context: str) -> str:
-    """Genera un borrador contextual (broadcast o alerta) con el LLM."""
+    """Genera un borrador contextual (broadcast/alerta/presion) con el LLM."""
     if kind == "alerta":
         system = (
             "Eres el dinamizador del Concejo del Futuro. Redacta una ALERTA "
@@ -64,6 +64,14 @@ async def _generate_draft(agent, kind: str, context: str) -> str:
             "Sin saludos ni firma. No inventes datos que no estén en el contexto."
         )
         user = f"Contexto del debate:\n{context}\n\nRedacta la alerta."
+    elif kind == "presion":
+        system = (
+            "Eres el dinamizador del Concejo del Futuro. Redacta una PRESIÓN "
+            "política breve (máx 60 palabras) que un actor externo (gremio, "
+            "comunidad, medio, ONG) dirige al Concejo. Tono: interpelativo, "
+            "directo, con mención explícita del SIADR. Sin saludos ni firma."
+        )
+        user = f"Contexto del debate:\n{context}\n\nRedacta la presión política."
     else:
         system = (
             "Eres el dinamizador del Concejo del Futuro. Redacta un COMUNICADO "
@@ -112,7 +120,7 @@ async def _show_draft_preview(agent, chat_id: int, user_id: int, kind: str):
 
     await _store_draft(user_id, kind, draft)
 
-    icon = "🚨" if kind == "alerta" else "📢"
+    icon = {"alerta": "🚨", "presion": "📣"}.get(kind, "📢")
     keyboard = json.dumps({"inline_keyboard": [
         [
             {"text": "✅ Aprobar y enviar", "callback_data": f"send_draft_{kind}"},
@@ -221,6 +229,9 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         })
 
     elif cmd == "presion":
+        if not args.strip():
+            await _show_draft_preview(agent, chat_id, chat_id, "presion")
+            return
         # /presion <tipo> <tema> <actor> <mensaje>
         parts = args.split('"')
         if len(parts) >= 4:
@@ -238,6 +249,19 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         await agent._send_response(chat_id, f"Presión '{tipo}' enviada.")
 
     elif cmd == "gabinete_remover":
+        if not args.strip():
+            from core.gabinete import GABINETE
+            keyboard = [
+                [{"text": g["nombre"], "callback_data": f"preview_gab_remove_{gid}"}]
+                for gid, g in GABINETE.items()
+            ]
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "🏛️ *Selecciona el gabinete a remover:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+            return
         gab_id = args.strip()
         await agent.bus.publish("control:command", {
             "action": "gabinete",
@@ -246,6 +270,19 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         await agent._send_response(chat_id, f"Gabinete: {gab_id} removido.")
 
     elif cmd == "gabinete_amenaza":
+        if not args.strip():
+            from core.gabinete import GABINETE
+            keyboard = [
+                [{"text": g["nombre"], "callback_data": f"preview_gab_threat_{gid}"}]
+                for gid, g in GABINETE.items()
+            ]
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "⚠️ *Selecciona el gabinete que emitirá la amenaza:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+            return
         parts = args.strip().split(" ", 2)
         gab_id = parts[0] if parts else ""
         bancada_id = int(parts[1]) if len(parts) > 1 else 0
@@ -306,6 +343,23 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
             await _execute_phase_actions(agent, fase_key, chat_id)
 
     elif cmd == "ronda":
+        if not args.strip():
+            keyboard = [
+                [
+                    {"text": "⏱️ 3 min", "callback_data": "ronda_start_3"},
+                    {"text": "⏱️ 5 min", "callback_data": "ronda_start_5"},
+                    {"text": "⏱️ 10 min", "callback_data": "ronda_start_10"},
+                    {"text": "⏱️ 15 min", "callback_data": "ronda_start_15"},
+                ],
+                [{"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+            ]
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "⏱️ *Selecciona la duración del timer:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+            return
         try:
             minutes = int(args.strip())
         except ValueError:
@@ -406,16 +460,63 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
             await agent._send_response(chat_id, "Uso: /llm switch <deepseek|kimi> | /llm status")
 
     elif cmd == "modo_test":
-        await _create_test_users(agent, chat_id)
+        keyboard = json.dumps({"inline_keyboard": [
+            [
+                {"text": "✅ Crear 15 usuarios de prueba", "callback_data": "confirm_modo_test"},
+                {"text": "❌ Cancelar", "callback_data": "cancel_action"},
+            ],
+        ]})
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                "⚠️ *Modo test*\n\n"
+                "Se crearán 15 usuarios ficticios (alcalde, secretarios, "
+                "concejales, líderes, veedor, empresa) con `telegram_id` en "
+                "el rango 900000000-900000014.\n\n"
+                "¿Continuar?"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": keyboard,
+        })
 
     elif cmd == "briefing":
-        await agent.bus.publish("intel:command", {
-            "action": "force_briefing",
-            "args": {},
+        keyboard = json.dumps({"inline_keyboard": [
+            [
+                {"text": "✅ Forzar briefing ahora", "callback_data": "confirm_briefing"},
+                {"text": "❌ Cancelar", "callback_data": "cancel_action"},
+            ],
+        ]})
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                "🕵️ *Forzar briefing de inteligencia*\n\n"
+                "El agente Intel generará un reporte inmediato sobre el estado "
+                "del debate y lo enviará al dinamizador.\n\n¿Continuar?"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": keyboard,
         })
-        await agent._send_response(chat_id, "Briefing forzado solicitado.")
 
     elif cmd == "pantalla":
+        if not args.strip():
+            keyboard = [
+                [
+                    {"text": "📺 Normal", "callback_data": "pantalla_mode_normal"},
+                    {"text": "🗳️ Votación", "callback_data": "pantalla_mode_votacion"},
+                ],
+                [
+                    {"text": "🎤 Ponencia", "callback_data": "pantalla_mode_ponencia"},
+                    {"text": "📊 Debate", "callback_data": "pantalla_mode_debate"},
+                ],
+                [{"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+            ]
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(chat_id),
+                "text": "📺 *Selecciona el modo de pantalla:*",
+                "parse_mode": "Markdown",
+                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+            })
+            return
         await agent.bus.publish("pantalla:command", {
             "action": "layout_change",
             "args": {"mode": args.strip()},
@@ -551,8 +652,8 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
         await agent._send_response(chat_id, f"📰 Fake news #{news_id} enviada a todos los concejales + pantalla.")
         return
 
-    if data in ("send_draft_broadcast", "send_draft_alerta"):
-        kind = "broadcast" if data.endswith("broadcast") else "alerta"
+    if data in ("send_draft_broadcast", "send_draft_alerta", "send_draft_presion"):
+        kind = data.rsplit("_", 1)[1]
         draft = await _load_draft(chat_id, kind)
         if not draft:
             await agent._send_response(chat_id, "Borrador expirado. Usa el comando de nuevo.")
@@ -563,17 +664,126 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
                 "args": {"message": draft, "target": "all"},
             })
             await agent._send_response(chat_id, "📢 Broadcast enviado.")
-        else:
+        elif kind == "alerta":
             await agent.bus.publish("control:command", {
                 "action": "alert",
                 "args": {"alert_type": "defensoria", "message": draft},
             })
             await agent._send_response(chat_id, "🚨 Alerta enviada.")
+        elif kind == "presion":
+            await agent.bus.publish("control:command", {
+                "action": "pressure",
+                "args": {
+                    "type": "comunicado", "tema": "general",
+                    "actor": "Actor externo", "message": draft,
+                },
+            })
+            await agent._send_response(chat_id, "📣 Presión política enviada.")
         return
 
-    if data in ("regen_draft_broadcast", "regen_draft_alerta"):
-        kind = "broadcast" if data.endswith("broadcast") else "alerta"
+    if data in ("regen_draft_broadcast", "regen_draft_alerta", "regen_draft_presion"):
+        kind = data.rsplit("_", 1)[1]
         await _show_draft_preview(agent, chat_id, chat_id, kind)
+        return
+
+    if data == "confirm_modo_test":
+        await _create_test_users(agent, chat_id)
+        return
+
+    if data == "confirm_briefing":
+        await agent.bus.publish("intel:command", {
+            "action": "force_briefing", "args": {},
+        })
+        await agent._send_response(chat_id, "🕵️ Briefing forzado.")
+        return
+
+    if data.startswith("ronda_start_"):
+        minutes = int(data.rsplit("_", 1)[1])
+        await agent.bus.publish("simulation:command", {
+            "action": "start_timer",
+            "args": {"name": "Ronda", "minutes": minutes},
+        })
+        await agent._send_response(chat_id, f"⏱️ Timer de {minutes} min iniciado.")
+        return
+
+    if data.startswith("pantalla_mode_"):
+        mode = data.rsplit("_", 1)[1]
+        await agent.bus.publish("pantalla:command", {
+            "action": "layout_change",
+            "args": {"mode": mode},
+        })
+        await agent._send_response(chat_id, f"📺 Pantalla: modo {mode}.")
+        return
+
+    if data.startswith("preview_gab_remove_"):
+        gab_id = data.replace("preview_gab_remove_", "")
+        from core.gabinete import GABINETE
+        gab = GABINETE.get(gab_id, {})
+        keyboard = json.dumps({"inline_keyboard": [
+            [
+                {"text": "✅ Confirmar remoción", "callback_data": f"send_gab_remove_{gab_id}"},
+                {"text": "❌ Cancelar", "callback_data": "cancel_action"},
+            ],
+        ]})
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                f"🏛️ *Remover gabinete:* {gab.get('nombre', gab_id)}\n"
+                f"Titular: {gab.get('titular', '?')}\n\n"
+                "¿Confirmar?"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": keyboard,
+        })
+        return
+
+    if data.startswith("send_gab_remove_"):
+        gab_id = data.replace("send_gab_remove_", "")
+        await agent.bus.publish("control:command", {
+            "action": "gabinete",
+            "args": {"gabinete_action": "remover", "gabinete_id": gab_id},
+        })
+        await agent._send_response(chat_id, f"🏛️ Gabinete *{gab_id}* removido.")
+        return
+
+    if data.startswith("preview_gab_threat_"):
+        gab_id = data.replace("preview_gab_threat_", "")
+        from core.gabinete import GABINETE
+        gab = GABINETE.get(gab_id, {})
+        # Ask which bancada to threaten
+        from core.config import BANCADAS
+        keyboard = [
+            [{"text": b["nombre"], "callback_data": f"send_gab_threat_{gab_id}_{bid}"}]
+            for bid, b in BANCADAS.items()
+        ]
+        keyboard.append([{"text": "❌ Cancelar", "callback_data": "cancel_action"}])
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                f"⚠️ *{gab.get('nombre', gab_id)} emitirá amenaza.*\n"
+                f"Titular: {gab.get('titular', '?')}\n\n"
+                "Selecciona la bancada destinataria:"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+        })
+        return
+
+    if data.startswith("send_gab_threat_"):
+        rest = data.replace("send_gab_threat_", "")
+        gab_id, bid = rest.rsplit("_", 1)
+        await agent.bus.publish("control:command", {
+            "action": "gabinete",
+            "args": {
+                "gabinete_action": "amenaza",
+                "gabinete_id": gab_id,
+                "bancada_id": int(bid),
+                "message": "",
+            },
+        })
+        await agent._send_response(
+            chat_id, f"⚠️ Amenaza de *{gab_id}* → bancada {bid} enviada."
+        )
         return
 
     if data.startswith("send_tweet_"):
