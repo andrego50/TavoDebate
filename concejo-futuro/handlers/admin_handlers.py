@@ -9,11 +9,137 @@ from db.database import get_session
 logger = logging.getLogger("handlers.admin")
 
 
+async def _build_context_snapshot() -> str:
+    """Lee últimas señales del debate para que el LLM haga un borrador contextual."""
+    from sqlalchemy import text as sql_text
+    import redis.asyncio as aioredis
+
+    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    phase = await r.get("current_phase") or "en curso"
+    await r.aclose()
+
+    parts = [f"Fase actual: {phase}"]
+
+    async with get_session() as session:
+        result = await session.execute(
+            sql_text(
+                "SELECT nombre_concejal, bancada_nombre, question "
+                "FROM interactions ORDER BY created_at DESC LIMIT 5"
+            )
+        )
+        interactions = list(result.mappings())
+        if interactions:
+            parts.append("Últimas preguntas de participantes:")
+            for iv in interactions:
+                q = (iv["question"] or "")[:140].replace("\n", " ")
+                parts.append(f"- [{iv['bancada_nombre']}] {iv['nombre_concejal']}: {q}")
+
+        result = await session.execute(
+            sql_text(
+                "SELECT description, results, closed_at FROM voting_sessions "
+                "WHERE results IS NOT NULL ORDER BY id DESC LIMIT 1"
+            )
+        )
+        last_vote = result.mappings().first()
+        if last_vote:
+            res = last_vote["results"]
+            if isinstance(res, str):
+                res = json.loads(res)
+            parts.append(
+                f"Última votación: {res.get('resultado', '?')} "
+                f"(sí {res.get('si', 0)} / no {res.get('no', 0)} / "
+                f"abs {res.get('abstencion', 0)})"
+            )
+
+    return "\n".join(parts)
+
+
+async def _generate_draft(agent, kind: str, context: str) -> str:
+    """Genera un borrador contextual (broadcast o alerta) con el LLM."""
+    if kind == "alerta":
+        system = (
+            "Eres el dinamizador del Concejo del Futuro. Redacta una ALERTA "
+            "institucional breve (máx 50 palabras) basada en el contexto. Tono: "
+            "Defensoría del Pueblo / Personería — formal, urgente, interpelativo. "
+            "Sin saludos ni firma. No inventes datos que no estén en el contexto."
+        )
+        user = f"Contexto del debate:\n{context}\n\nRedacta la alerta."
+    else:
+        system = (
+            "Eres el dinamizador del Concejo del Futuro. Redacta un COMUNICADO "
+            "breve (máx 60 palabras) para todos los participantes basado en el "
+            "contexto actual del debate. Debe orientar la deliberación: recordar "
+            "tiempo restante, invitar a argumentar mejor, o señalar un hecho "
+            "reciente relevante. Sin saludos. No inventes datos."
+        )
+        user = f"Contexto del debate:\n{context}\n\nRedacta el comunicado."
+
+    try:
+        text = await agent.llm.generate(system, user, temperature=0.7, max_tokens=200)
+        return text.strip().strip('"')
+    except Exception as e:
+        logger.error(f"Draft generation failed: {e}")
+        return ""
+
+
+async def _store_draft(user_id: int, kind: str, text: str):
+    import redis.asyncio as aioredis
+    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    await r.setex(f"tavodebate:draft:{kind}:{user_id}", 900, text)
+    await r.aclose()
+
+
+async def _load_draft(user_id: int, kind: str) -> str | None:
+    import redis.asyncio as aioredis
+    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    text = await r.get(f"tavodebate:draft:{kind}:{user_id}")
+    if text:
+        await r.delete(f"tavodebate:draft:{kind}:{user_id}")
+    await r.aclose()
+    return text
+
+
+async def _show_draft_preview(agent, chat_id: int, user_id: int, kind: str):
+    """Genera borrador contextual y muestra preview con botones."""
+    context = await _build_context_snapshot()
+    draft = await _generate_draft(agent, kind, context)
+    if not draft:
+        await agent._send_response(
+            chat_id,
+            f"No pude generar un borrador. Usa `/{kind} <texto>` para enviar manualmente."
+        )
+        return
+
+    await _store_draft(user_id, kind, draft)
+
+    icon = "🚨" if kind == "alerta" else "📢"
+    keyboard = json.dumps({"inline_keyboard": [
+        [
+            {"text": "✅ Aprobar y enviar", "callback_data": f"send_draft_{kind}"},
+            {"text": "🔄 Regenerar", "callback_data": f"regen_draft_{kind}"},
+        ],
+        [{"text": "❌ Cancelar", "callback_data": "cancel_action"}],
+    ]})
+    await agent.bus.stream_add("telegram:outgoing", {
+        "chat_id": str(chat_id),
+        "text": (
+            f"{icon} *Borrador de {kind}:*\n\n{draft}\n\n"
+            f"_Aprueba para enviar a todos, regenera para otro intento, "
+            f"o escribe `/{kind} <tu texto>` para versión manual._"
+        ),
+        "parse_mode": "Markdown",
+        "reply_markup": keyboard,
+    })
+
+
 async def handle_admin_command(agent, command: str, args: str, chat_id: int):
     """Enruta comandos admin al orquestador via Redis."""
     cmd = command.lstrip("/")
 
     if cmd == "broadcast":
+        if not args.strip():
+            await _show_draft_preview(agent, chat_id, chat_id, "broadcast")
+            return
         await agent.bus.publish("control:command", {
             "action": "broadcast",
             "args": {"message": args, "target": "all"},
@@ -136,6 +262,9 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         await agent._send_response(chat_id, f"Amenaza de gabinete enviada a bancada {bancada_id}.")
 
     elif cmd == "alerta":
+        if not args.strip():
+            await _show_draft_preview(agent, chat_id, chat_id, "alerta")
+            return
         await agent.bus.publish("control:command", {
             "action": "alert",
             "args": {"alert_type": "defensoria", "message": args},
@@ -420,6 +549,31 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
             "args": {"news_id": news_id},
         })
         await agent._send_response(chat_id, f"📰 Fake news #{news_id} enviada a todos los concejales + pantalla.")
+        return
+
+    if data in ("send_draft_broadcast", "send_draft_alerta"):
+        kind = "broadcast" if data.endswith("broadcast") else "alerta"
+        draft = await _load_draft(chat_id, kind)
+        if not draft:
+            await agent._send_response(chat_id, "Borrador expirado. Usa el comando de nuevo.")
+            return
+        if kind == "broadcast":
+            await agent.bus.publish("control:command", {
+                "action": "broadcast",
+                "args": {"message": draft, "target": "all"},
+            })
+            await agent._send_response(chat_id, "📢 Broadcast enviado.")
+        else:
+            await agent.bus.publish("control:command", {
+                "action": "alert",
+                "args": {"alert_type": "defensoria", "message": draft},
+            })
+            await agent._send_response(chat_id, "🚨 Alerta enviada.")
+        return
+
+    if data in ("regen_draft_broadcast", "regen_draft_alerta"):
+        kind = "broadcast" if data.endswith("broadcast") else "alerta"
+        await _show_draft_preview(agent, chat_id, chat_id, kind)
         return
 
     if data.startswith("send_tweet_"):

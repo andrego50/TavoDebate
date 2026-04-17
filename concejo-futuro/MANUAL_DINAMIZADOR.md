@@ -4,11 +4,12 @@
 
 TavoDebate es un simulador legislativo por Telegram donde los participantes asumen el rol de concejales de Cundinamarca. Debaten un proyecto de acuerdo real (el SIADR — Sistema de IA para Desarrollo Rural) con ayuda de personajes de IA que responden según diferentes perspectivas.
 
-Cada concejal:
-- Se registra eligiendo municipio y bancada
-- Consulta a 5 personajes de IA (campesino, científico, contralor, empresa, alcalde)
+Cada participante:
+- Se registra en 5 pasos con botones (nombre, grupo, rol, provincia, municipio, posición/causa)
+- Elige su grupo institucional: **Concejal**, **Gobierno/Alcaldía**, **Sociedad civil**, **Empresa/Gremio** o **Control/Veeduría**
+- Consulta a **5 asesores especializados** (jurídico ⚖️, comunicaciones 📢, económico 📊, político 🏛️, tecnológico 💻) vía `/asesores` — todos buscan en DuckDuckGo
 - Propone enmiendas, negocia con otras bancadas
-- Vota el proyecto al final
+- **Solo los concejales votan** el proyecto al final
 
 Tú como dinamizador controlas las fases, lanzas eventos sorpresa y monitoreas la actividad desde el bot y el geodashboard.
 
@@ -114,7 +115,7 @@ docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro -c "
 1. Activar el PIN: `/pin 1234` (el que quieras)
 2. Proyectar el QR o link del bot en pantalla + decir el PIN en voz alta
 3. Explicar brevemente:
-   > "Van a ser concejales de Cundinamarca. Entren al bot, sigan los pasos: ingresen el código, su nombre, provincia, municipio, bancada e intereses. La IA les va a dar un dossier personalizado según su bancada."
+   > "Entren al bot y sigan los pasos con botones: (1) nombre, (2) rol institucional — concejal, gobierno, sociedad civil, empresa o control, (3) provincia y municipio, (4) si eres concejal: posición inicial (a favor, en contra o indeciso); los demás roles obtienen bancada automática, (5) causa principal. La IA les entregará un dossier personalizado y 5 asesores especializados."
 
 4. Cambiar la fase (escribe `/fase` y aparecen los botones, o directamente):
    ```
@@ -128,17 +129,14 @@ docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro -c "
    ```
    Esto muestra cuántos concejales hay registrados y por bancada.
 
-**Tip:** Las 6 bancadas son:
-| # | Bancada | Posición |
-|---|---------|----------|
-| 1 | Gobierno | A FAVOR |
-| 2 | Oposición | EN CONTRA |
-| 3 | Rural | CONDICIONAL |
-| 4 | Urbana | PRAGMÁTICOS |
-| 5 | Presupuesto | FISCALIZACIÓN |
-| 6 | Veeduría | CONTROL SOCIAL |
+**Tip:** Los concejales eligen entre 3 posiciones iniciales (internamente mapeadas a bancadas 1/2/4):
+| Botón | Bancada interna | Posición |
+|-------|-----------------|----------|
+| ✅ A FAVOR | 1 Gobierno | Defiende el proyecto |
+| ❌ EN CONTRA | 2 Oposición | Se opone |
+| 🤔 INDECISO | 4 Pragmáticos | Condicional |
 
-Intenta que haya participantes en todas las bancadas. Si una queda vacía, puedes mencionarlo.
+Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Sociedad civil→3, Empresa→4, Control→5. **No hay límite** por rol: pueden registrarse varios alcaldes, contralores, etc.
 
 ---
 
@@ -255,28 +253,32 @@ Intenta que haya participantes en todas las bancadas. Si una queda vacía, puede
 
 ### Fase 6: Votación (10 min)
 
-**Objetivo:** Votar el proyecto final.
+**Objetivo:** Votar el proyecto final. **Solo concejales pueden votar** (roles `alcalde`, `contralor`, `lider_*`, etc. reciben mensaje de que no votan).
 
 1. Cambiar fase:
    ```
    /fase votacion
    ```
+   Esto **automáticamente**:
+   - Cierra cualquier votación anterior abierta
+   - Abre una nueva `voting_session`
+   - Inicia un **timer fresco de 5 minutos** (reinicia cada vez que entras a la fase)
+   - Envía aviso a todos los concejales
 
-2. Anunciar:
-   ```
-   /broadcast Ha llegado el momento de votar. Usen /votar_proyecto seguido de: a_favor, en_contra, o abstencion.
-   ```
+2. Monitorear votos con `/estado` mientras el timer corre.
 
-3. Timer:
-   ```
-   /ronda 5
-   ```
+3. Al llegar a 0 segundos, el sistema **automáticamente**:
+   - Cierra la sesión en DB
+   - Cuenta `si` / `no` / `abstención` de los votos emitidos en esa ventana
+   - Determina **APROBADO** (si > no) o **RECHAZADO**
+   - Envía a todos los participantes el resultado final + **trazabilidad de todas las votaciones anteriores**
+   - Publica el evento en pantalla
 
-4. Monitorear votos con `/estado`
+4. Puedes repetir `/fase votacion` para abrir una nueva ronda — el contador se reinicia y el resultado anterior queda en el historial.
 
-5. Cuando termine el timer:
+5. Consultar el historial en cualquier momento:
    ```
-   /broadcast La votación ha cerrado. Resultados en pantalla.
+   /historial_votaciones
    ```
 
 ---
@@ -315,12 +317,17 @@ Intenta que haya participantes en todas las bancadas. Si una queda vacía, puede
 | `/pin off` | Desactivar PIN (registro abierto) |
 | `/pin` | Ver PIN actual |
 | `/ronda <min>` | Timer de N minutos en pantalla |
-| `/broadcast <msg>` | Mensaje a todos los concejales |
+| `/broadcast <msg>` | Mensaje manual a todos los concejales |
+| `/broadcast` (sin texto) | **Genera borrador contextual** con LLM → preview con botones ✅ Aprobar / 🔄 Regenerar / ❌ Cancelar |
+| `/alerta <msg>` | Alerta manual al geodashboard |
+| `/alerta` (sin texto) | **Genera borrador de alerta contextual** → preview con botones |
 | `/bomba <N>` | Bomba informativa #N |
 | `/fakenews <N>` | Fake news #N |
 | `/presion <msg>` | Presión política simulada |
 | `/tweet <texto>` | Tweet simulado en pantalla |
-| `/alerta <msg>` | Alerta visual en geodashboard |
+| `/historial_votaciones` | Lista todas las votaciones con resultado |
+| `/asignar_rol <nombre> <rol>` | Asignar rol institucional a un usuario ya registrado |
+| `/roles` | Lista de roles disponibles |
 | `/briefing` | Forzar briefing de inteligencia |
 | `/llm switch <proveedor>` | Cambiar proveedor LLM (deepseek/kimi) |
 | `/help` | Lista completa de comandos |
@@ -329,23 +336,25 @@ Intenta que haya participantes en todas las bancadas. Si una queda vacía, puede
 
 | Comando | Qué hace |
 |---------|----------|
-| `/start` | Registrarse (4 pasos) |
+| `/start` | Registrarse (5 pasos, todo por botones salvo el nombre) |
 | `/help` | Ver comandos |
 | `/estado` | Mi resumen personal |
+| `/asesores` | Panel de 5 asesores especializados (⚖️📢📊🏛️💻) — todos con DuckDuckGo |
 | `/ciudadano` | Voz: Líder campesino |
 | `/experto` | Voz: Científico de datos |
 | `/contralor` | Voz: Control fiscal |
 | `/empresa` | Voz: Empresa tech |
 | `/alcalde` | Voz: Alcalde proponente |
-| `/preparar_ponencia` | La IA arma tu ponencia según tu bancada |
+| `/preparar_ponencia` | La IA arma tu ponencia según tu rol y causa |
 | `/preparar_ponencia <ideas>` | Ponencia basada en tus ideas |
 | `/proponer <texto>` | Proponer enmienda |
 | `/propuestas_todas` | Ver todas las propuestas |
 | `/apoyar N` | Apoyar propuesta #N |
 | `/negociar N` | Negociar con bancada N |
-| `/votar_proyecto <voto>` | Votar (a_favor/en_contra/abstencion) |
+| `/tuitear <texto>` | (solo concejales) Publicar tuit en pantalla — soporta citar/responder |
+| `/votar_proyecto <voto>` | (solo `rol = concejal`) Votar a_favor / en_contra / abstencion |
 | `/mi_certificado` | Descargar certificado PDF |
-| Texto libre | Preguntar a la IA (responde según voz activa) |
+| Texto libre | Preguntar al asesor activo (responde según asesor + voz activa, puede buscar en web) |
 
 ---
 
