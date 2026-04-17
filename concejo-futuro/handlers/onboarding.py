@@ -11,20 +11,50 @@ from db.database import get_session
 
 logger = logging.getLogger("handlers.onboarding")
 
-CLASSIFY_INTERESTS_PROMPT = """Un concejal municipal de Cundinamarca describió sus intereses así:
-"{texto_concejal}"
-
-Clasifica en JSON (sin backticks):
-{{"temas": ["lista de temas normalizados"], "keywords": ["palabras clave adicionales"], "resumen": "resumen en 1 línea"}}
-
-Temas válidos (usa estos exactamente):
-agro, derechos_humanos, turismo, seguridad, educacion, salud,
-ambiente, infraestructura, mujer_genero, juventud, indigena_etnico,
-comercio, tecnologia, hacienda, victimas, agua, vivienda,
-cultura, deporte, adulto_mayor, discapacidad, paz,
-transporte, mineria, emprendimiento
-
-Máximo 5 temas, máximo 10 keywords."""
+# Temas predefinidos para selección determinista en onboarding (single-select)
+# key → (emoji + label para botón, lista de temas canónicos, resumen)
+TEMAS_ONBOARDING = {
+    "agro": {
+        "label": "🌾 Agro y desarrollo rural",
+        "temas": ["agro", "agua"],
+        "resumen": "Defensa de campesinos, agricultura y desarrollo rural.",
+    },
+    "infra": {
+        "label": "💡 Infraestructura y alumbrado",
+        "temas": ["infraestructura", "transporte"],
+        "resumen": "Obras públicas, alumbrado rural y vías.",
+    },
+    "tec": {
+        "label": "💻 Tecnología e innovación",
+        "temas": ["tecnologia", "emprendimiento"],
+        "resumen": "Modernización, IoT y gobierno digital.",
+    },
+    "hacienda": {
+        "label": "💰 Presupuesto y hacienda",
+        "temas": ["hacienda"],
+        "resumen": "Fiscalización presupuestal y uso de regalías.",
+    },
+    "ambiente": {
+        "label": "🌱 Medio ambiente y agua",
+        "temas": ["ambiente", "agua"],
+        "resumen": "Protección ambiental y acceso a agua potable.",
+    },
+    "educacion": {
+        "label": "📚 Educación y juventud",
+        "temas": ["educacion", "juventud"],
+        "resumen": "Educación rural, juventud y formación.",
+    },
+    "salud": {
+        "label": "🏥 Salud y derechos",
+        "temas": ["salud", "derechos_humanos"],
+        "resumen": "Salud pública y derechos de poblaciones vulnerables.",
+    },
+    "seguridad": {
+        "label": "🛡️ Seguridad y transparencia",
+        "temas": ["seguridad"],
+        "resumen": "Seguridad rural y control a la corrupción.",
+    },
+}
 
 FASES = {
     "registro": {"nombre": "Registro", "bot_permite": ["start"]},
@@ -246,15 +276,93 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
         posicion_label = {1: "✅ A FAVOR", 2: "❌ EN CONTRA", 4: "🤔 INDECISO"}.get(
             bancada_id, bancada["nombre"]
         )
-        await agent._send_response(
-            chat_id,
-            f"Posición inicial: {posicion_label}\n\n"
-            f"*Paso 4 de 4:* Cuéntame en tus propias palabras, "
-            f"¿qué temas o causas defiendes como concejal? "
-            f"¿Qué te apasiona de tu labor?\n\n"
-            f"_Ejemplo: 'Yo trabajo por los campesinos de mi vereda, "
-            f"la educación rural y el acceso a agua potable'_",
-        )
+
+        # Step 4: show predefined themes as buttons (single-select)
+        keyboard = []
+        items = list(TEMAS_ONBOARDING.items())
+        for i in range(0, len(items), 2):
+            row = []
+            for key, info in items[i:i+2]:
+                row.append({
+                    "text": info["label"],
+                    "callback_data": f"onboard_tema_{key}",
+                })
+            keyboard.append(row)
+
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                f"Posición inicial: {posicion_label}\n\n"
+                f"*Paso 4 de 4:* ¿Cuál es tu causa principal como concejal?"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+        })
+
+    elif step == "tema":
+        # User selected tema → complete onboarding
+        tema_key = parts[2]
+        info = TEMAS_ONBOARDING.get(tema_key)
+        if not info:
+            return
+
+        temas = info["temas"]
+        resumen = info["resumen"]
+        temas_pg = "{" + ",".join(temas) + "}"
+
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            await session.execute(
+                sql_text(
+                    "UPDATE users SET intereses_raw = :raw, "
+                    "temas_interes = CAST(:temas AS text[]), "
+                    "intereses_keywords = CAST(:kw AS text[]), "
+                    "intereses_resumen = :res, "
+                    "onboarding_complete = true, onboarding_step = 0, "
+                    "posicion_inicial = :pos "
+                    "WHERE telegram_id = :tid"
+                ),
+                {
+                    "raw": info["label"],
+                    "temas": temas_pg,
+                    "kw": "{}",
+                    "res": resumen,
+                    "pos": "neutral",
+                    "tid": user_id,
+                },
+            )
+            result = await session.execute(
+                sql_text("SELECT * FROM users WHERE telegram_id = :tid"),
+                {"tid": user_id},
+            )
+            user = result.mappings().first()
+
+        if user:
+            bancada = BANCADAS.get(user["bancada_id"], {})
+            posicion_label = {
+                1: "✅ A FAVOR", 2: "❌ EN CONTRA", 4: "🤔 INDECISO"
+            }.get(user["bancada_id"], bancada.get("nombre", "?"))
+
+            msg = (
+                f"*Registro completado*\n\n"
+                f"*{user['nombre_completo']}*\n"
+                f"Concejal de {user['municipio']} ({user['provincia']})\n"
+                f"Posición: {posicion_label}\n"
+                f"Causa: {info['label']}\n\n"
+                f"{get_voice_selection_text()}\n\n"
+                f"Escribe cualquier pregunta para comenzar."
+            )
+            await agent._send_response(chat_id, msg)
+
+            dossier = get_dossier(user["bancada_id"])
+            await agent._send_response(chat_id, dossier)
+
+            power_map = format_power_map(
+                user["bancada_id"],
+                user.get("temas_interes", []) or [],
+            )
+            if power_map:
+                await agent._send_response(chat_id, power_map)
 
 
 async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
@@ -325,91 +433,13 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
         })
 
-    elif step in (2, 3):
-        # Steps 2 & 3 expect inline button callbacks, not text
+    elif step in (2, 3, 4):
+        # Steps 2, 3 & 4 expect inline button callbacks, not text
         await agent._send_response(
             chat_id,
             "Por favor usa los botones de arriba para seleccionar tu opción. "
             "Si no los ves, envía /start para reiniciar el registro."
         )
-
-    elif step == 4:
-        # Step 4: Classify interests with LLM
-        await agent._send_response(chat_id, "Clasificando tus intereses...")
-
-        prompt = CLASSIFY_INTERESTS_PROMPT.format(texto_concejal=text)
-        classification_text = await agent.llm.generate(
-            prompt, "Clasifica.", temperature=0.3, max_tokens=300
-        )
-
-        try:
-            parsed = json.loads(classification_text)
-        except json.JSONDecodeError:
-            parsed = {"temas": [], "keywords": [], "resumen": text[:200]}
-
-        temas = parsed.get("temas", [])[:5]
-        keywords = parsed.get("keywords", [])[:10]
-        resumen = parsed.get("resumen", "")[:200]
-
-        async with get_session() as session:
-            from sqlalchemy import text as sql_text
-            # Convert lists to PostgreSQL array literal format
-            temas_pg = "{" + ",".join(temas) + "}" if temas else "{}"
-            kw_pg = "{" + ",".join(keywords) + "}" if keywords else "{}"
-            await session.execute(
-                sql_text(
-                    "UPDATE users SET intereses_raw = :raw, "
-                    "temas_interes = CAST(:temas AS text[]), "
-                    "intereses_keywords = CAST(:kw AS text[]), "
-                    "intereses_resumen = :res, "
-                    "onboarding_complete = true, onboarding_step = 0, "
-                    "posicion_inicial = :pos "
-                    "WHERE telegram_id = :tid"
-                ),
-                {
-                    "raw": text,
-                    "temas": temas_pg,
-                    "kw": kw_pg,
-                    "res": resumen,
-                    "pos": "neutral",
-                    "tid": user_id,
-                },
-            )
-
-            # Get full user for completion message
-            result = await session.execute(
-                sql_text("SELECT * FROM users WHERE telegram_id = :tid"),
-                {"tid": user_id},
-            )
-            user = result.mappings().first()
-
-        if user:
-            bancada = BANCADAS.get(user["bancada_id"], {})
-            temas_display = ", ".join(temas) if temas else "Generales"
-
-            msg = (
-                f"*Registro completado*\n\n"
-                f"*{user['nombre_completo']}*\n"
-                f"Concejal de {user['municipio']} ({user['provincia']})\n"
-                f"Bancada: {bancada.get('nombre', '?')}\n"
-                f"Temas: {temas_display}\n"
-                f"_{resumen}_\n\n"
-                f"{get_voice_selection_text()}\n\n"
-                f"Escribe cualquier pregunta para comenzar."
-            )
-            await agent._send_response(chat_id, msg)
-
-            # Send dossier
-            dossier = get_dossier(user["bancada_id"])
-            await agent._send_response(chat_id, dossier)
-
-            # Send power map
-            power_map = format_power_map(
-                user["bancada_id"],
-                user.get("temas_interes", []) or [],
-            )
-            if power_map:
-                await agent._send_response(chat_id, power_map)
 
 
 async def handle_help(agent, chat_id: int):
