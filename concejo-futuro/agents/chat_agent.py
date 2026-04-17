@@ -150,6 +150,15 @@ class ChatAgent(BaseAgent):
         elif command == "/tutorial":
             from handlers.tutorial_handler import handle_tutorial
             await handle_tutorial(self, user_id, chat_id)
+        elif command == "/votacion_articulos":
+            from handlers.presidencia_handler import handle_votacion_articulos
+            await handle_votacion_articulos(self, user_id, chat_id)
+        elif command == "/votar_articulo":
+            from handlers.presidencia_handler import handle_votar_articulo
+            await handle_votar_articulo(self, user_id, chat_id, args)
+        elif command == "/compilar_acuerdo":
+            from handlers.presidencia_handler import handle_compilar_acuerdo
+            await handle_compilar_acuerdo(self, user_id, chat_id)
         elif command == "/tuitear":
             await self._handle_tuitear(user_id, chat_id, args)
         elif command == "/asesores":
@@ -569,6 +578,12 @@ class ChatAgent(BaseAgent):
                     "Para volver al modo equipo, toca 🧠 abajo o usa /asesores.",
                     reply_markup=bar,
                 )
+        elif data == "presi_oficializar":
+            from handlers.presidencia_handler import handle_oficializar
+            await handle_oficializar(self, user_id, chat_id)
+        elif data == "presi_regenerar":
+            from handlers.presidencia_handler import handle_regenerar
+            await handle_regenerar(self, user_id, chat_id)
         elif data.startswith("tavo_do_"):
             try:
                 _, _, action_id, idx_str = data.split("_", 3)

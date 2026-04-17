@@ -74,6 +74,12 @@ BANCADAS = {
 # Roles del ejercicio — algunos votan, otros participan sin voto
 ROLES = {
     # === CONCEJALES (votan) ===
+    "presidente_concejo": {
+        "nombre": "🎖️ Presidente del Concejo",
+        "grupo": "concejo",
+        "descripcion": "Preside sesiones, abre votación por artículo y comunica acuerdos aprobados",
+        "puede_votar": True,
+    },
     "concejal": {
         "nombre": "🏛️ Concejal",
         "grupo": "concejo",

@@ -150,8 +150,98 @@ class SimulationAgent(BaseAgent):
                             await self._close_voting_session()
                         except Exception as e:
                             logger.error(f"Error closing voting: {e}", exc_info=True)
+                    elif expired_name.startswith("votacion_articulo_"):
+                        try:
+                            num = int(expired_name.rsplit("_", 1)[1])
+                            await self._close_articulo_session(num)
+                        except Exception as e:
+                            logger.error(f"Error closing articulo: {e}", exc_info=True)
 
             await asyncio.sleep(1)
+
+    async def _close_articulo_session(self, numero: int):
+        """Cierra la votación del artículo N, publica resultados, y abre el
+        siguiente automáticamente. Al cerrar el último, publica un resumen
+        global y sugiere al Presidente usar /compilar_acuerdo."""
+        from db.database import get_session
+        from sqlalchemy import text as sql_text
+        from core.articulado import ARTICULOS, get_articulo
+
+        async with get_session() as session:
+            result = await session.execute(sql_text(
+                "SELECT id, description, opened_at FROM voting_sessions "
+                "WHERE type = 'articulo' AND target_id = :n AND is_open = true "
+                "ORDER BY id DESC LIMIT 1"
+            ), {"n": numero})
+            vs = result.mappings().first()
+            if not vs:
+                logger.warning(f"No open articulo session for {numero}")
+                return
+
+            result = await session.execute(sql_text(
+                "SELECT vote, COUNT(*) as n FROM votes "
+                "WHERE vote_type = 'articulo' AND target_id = :n "
+                "AND created_at >= :opened GROUP BY vote"
+            ), {"n": numero, "opened": vs["opened_at"]})
+            counts = {row["vote"]: row["n"] for row in result.mappings()}
+            si = counts.get("si", 0)
+            no = counts.get("no", 0)
+            abst = counts.get("abstencion", 0)
+            aprobado = si > no
+            results_json = {
+                "articulo": numero, "si": si, "no": no, "abstencion": abst,
+                "aprobado": aprobado,
+                "resultado": "APROBADO" if aprobado else "RECHAZADO",
+            }
+            await session.execute(sql_text(
+                "UPDATE voting_sessions SET is_open = false, closed_at = NOW(), "
+                "results = CAST(:r AS jsonb) WHERE id = :sid"
+            ), {"r": json.dumps(results_json), "sid": vs["id"]})
+
+            # Recipients
+            result = await session.execute(sql_text(
+                "SELECT telegram_id FROM users WHERE onboarding_complete = true"
+            ))
+            tids = [row[0] for row in result.fetchall()]
+
+        art = get_articulo(numero) or {"titulo": "?"}
+        emoji = "✅" if aprobado else "❌"
+        msg = (
+            f"{emoji} *Art. {numero} — {art['titulo']}*\n"
+            f"Resultado: *{results_json['resultado']}*\n"
+            f"Sí {si} / No {no} / Abs {abst}"
+        )
+        for tid in tids:
+            await self.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(tid),
+                "text": msg,
+                "parse_mode": "Markdown",
+            })
+        await self.bus.publish("voting:ended", results_json)
+
+        # Next article or finish
+        if numero < len(ARTICULOS):
+            from handlers.presidencia_handler import _open_articulo_vote
+            await _open_articulo_vote(self, numero + 1, None)
+        else:
+            # Find the presidente and prompt them to compile
+            async with get_session() as session:
+                result = await session.execute(sql_text(
+                    "SELECT telegram_id FROM users "
+                    "WHERE rol = 'presidente_concejo' LIMIT 1"
+                ))
+                presi_tid = result.scalar()
+            if presi_tid:
+                await self.bus.stream_add("telegram:outgoing", {
+                    "chat_id": str(presi_tid),
+                    "text": (
+                        "🎖️ *Votación por artículos finalizada.*\n\n"
+                        "Usa `/compilar_acuerdo` para que Tavo redacte el "
+                        "texto final consolidado y puedas difundirlo."
+                    ),
+                    "parse_mode": "Markdown",
+                })
+        logger.info(f"Articulo {numero} closed: {results_json}")
 
     async def _close_voting_session(self):
         """Cierra la sesión de votación activa, calcula resultados y difunde."""

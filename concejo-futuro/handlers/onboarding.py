@@ -16,8 +16,8 @@ logger = logging.getLogger("handlers.onboarding")
 # Los demás obtienen bancada automática según su grupo.
 GRUPOS_ONBOARDING = {
     "concejo": {
-        "label": "🏛️ Concejal",
-        "roles": ["concejal"],  # directo, sin sub-paso
+        "label": "🏛️ Concejo",
+        "roles": ["concejal", "presidente_concejo"],
     },
     "gobierno": {
         "label": "👔 Gobierno / Alcaldía",
@@ -268,21 +268,7 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
         if not grupo:
             return
 
-        # Concejal: rol directo, saltar al paso de provincia
-        if grupo_key == "concejo":
-            async with get_session() as session:
-                from sqlalchemy import text as sql_text
-                await session.execute(
-                    sql_text(
-                        "UPDATE users SET rol = 'concejal', onboarding_step = 4 "
-                        "WHERE telegram_id = :tid"
-                    ),
-                    {"tid": user_id},
-                )
-            await _show_provincias(agent, chat_id)
-            return
-
-        # Otros grupos: mostrar sub-roles
+        # Todos los grupos (incluido concejo ahora) muestran sub-roles
         async with get_session() as session:
             from sqlalchemy import text as sql_text
             await session.execute(
@@ -388,6 +374,7 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
             # Step 5: Posición sobre el proyecto (3 opciones simples)
             keyboard = [
                 [{"text": "✅ A FAVOR del proyecto", "callback_data": "onboard_ban_1"}],
+                [{"text": "🟡 A FAVOR CON CONDICIONES", "callback_data": "onboard_ban_3"}],
                 [{"text": "❌ EN CONTRA del proyecto", "callback_data": "onboard_ban_2"}],
                 [{"text": "🤔 INDECISO / depende", "callback_data": "onboard_ban_4"}],
             ]
@@ -435,7 +422,7 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
                 {"bid": bancada_id, "bname": bancada["nombre"], "tid": user_id},
             )
 
-        posicion_label = {1: "✅ A FAVOR", 2: "❌ EN CONTRA", 4: "🤔 INDECISO"}.get(
+        posicion_label = {1: "✅ A FAVOR", 2: "❌ EN CONTRA", 3: "🟡 A FAVOR CON CONDICIONES", 4: "🤔 INDECISO"}.get(
             bancada_id, bancada["nombre"]
         )
 

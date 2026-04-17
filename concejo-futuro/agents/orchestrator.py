@@ -116,6 +116,9 @@ class Orchestrator(BaseAgent):
             {"command": "proponer", "description": "Proponer enmienda"},
             {"command": "propuestas_todas", "description": "Ver todas las propuestas"},
             {"command": "votar_proyecto", "description": "Votar el proyecto"},
+            {"command": "votar_articulo", "description": "Votar un artículo (uso: /votar_articulo N si|no|abstencion)"},
+            {"command": "votacion_articulos", "description": "🎖️ Presidente: abrir votación por artículos"},
+            {"command": "compilar_acuerdo", "description": "🎖️ Presidente: compilar texto final del acuerdo"},
             {"command": "mi_certificado", "description": "Descargar certificado PDF"},
         ]
 
