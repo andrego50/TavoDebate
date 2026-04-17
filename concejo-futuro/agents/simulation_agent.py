@@ -82,6 +82,11 @@ class SimulationAgent(BaseAgent):
             duration_min = 5
 
         self.current_phase = phase
+        # Expose phase in Redis so asesores / handlers can read it without IPC
+        try:
+            await self.bus.raw.set("current_phase", phase)
+        except Exception as e:
+            logger.warning(f"Could not persist current_phase: {e}")
 
         if duration_min > 0:
             self.current_timer = {

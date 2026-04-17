@@ -88,12 +88,101 @@ async def build_system_prompt(user: dict, session=None, advisor_key: str = None)
 
 
 async def _get_live_context(user: dict, bancada_id: int, session) -> str:
-    """Obtiene contexto en vivo del debate."""
+    """Obtiene contexto en vivo del debate para que el asesor nunca hable a ciegas."""
     from sqlalchemy import text as sql_text
 
     parts = []
 
-    # Get debate state
+    # --- REAL-TIME SIGNALS (from Redis pub/sub cache) ---
+    try:
+        import redis.asyncio as aioredis
+        from core.config import settings
+        r = aioredis.from_url(settings.redis_url, decode_responses=True)
+
+        # Current phase
+        phase = await r.get("current_phase")
+        if phase:
+            parts.append(f"--- FASE ACTUAL ---\n{phase}")
+
+        # Last open voting session
+        last_vote_res = await session.execute(
+            sql_text(
+                "SELECT description, is_open, results FROM voting_sessions "
+                "ORDER BY id DESC LIMIT 1"
+            )
+        )
+        lv = last_vote_res.mappings().first()
+        if lv:
+            if lv["is_open"]:
+                parts.append(
+                    f"--- VOTACIÓN EN CURSO ---\n{lv['description']}"
+                )
+            elif lv["results"]:
+                res = lv["results"] if isinstance(lv["results"], dict) else json.loads(lv["results"])
+                parts.append(
+                    f"--- ÚLTIMA VOTACIÓN ---\n"
+                    f"{res.get('resultado', '?')} — "
+                    f"sí {res.get('si', 0)} / no {res.get('no', 0)} / abs {res.get('abstencion', 0)}"
+                )
+
+        # Recent tweets (last 6) — already JSON-serialized in chat_agent
+        raw_tweets = await r.lrange("tavodebate:recent_tweets", 0, 5)
+        tweets = []
+        for raw in raw_tweets:
+            try:
+                t = json.loads(raw)
+                author = t.get("author", "?")
+                text = (t.get("text", "") or "")[:140].replace("\n", " ")
+                tid = t.get("tweet_id", "?")
+                marker = ""
+                if t.get("reply_to_id"):
+                    marker = f" ↪#{t['reply_to_id']}"
+                elif t.get("quote_to_id"):
+                    marker = f" 🔁#{t['quote_to_id']}"
+                tweets.append(f"#{tid} {author}{marker}: {text}")
+            except Exception:
+                continue
+        if tweets:
+            parts.append("--- TUITS RECIENTES EN PANTALLA ---\n" + "\n".join(tweets))
+
+        # Recent pantalla events: bombs, fakenews, alerts, pressure (last 15)
+        # pantalla_agent persists these to tavodebate:pantalla_history
+        raw_hist = await r.lrange("tavodebate:pantalla_history", -20, -1)
+        relevant_channels = {
+            "bomb:sent": "💣 BOMBA",
+            "fakenews:sent": "📰 FAKE NEWS",
+            "alert:sent": "🚨 ALERTA",
+            "pressure:sent": "📣 PRESIÓN",
+            "broadcast:sent": "📢 COMUNICADO",
+        }
+        news_lines = []
+        for raw in raw_hist:
+            try:
+                ev = json.loads(raw)
+                ch = ev.get("channel", "")
+                if ch not in relevant_channels:
+                    continue
+                data = ev.get("data", {}) or {}
+                msg = (
+                    data.get("message") or data.get("text") or
+                    data.get("title") or data.get("description") or ""
+                )
+                msg = msg[:180].replace("\n", " ")
+                if msg:
+                    news_lines.append(f"{relevant_channels[ch]}: {msg}")
+            except Exception:
+                continue
+        if news_lines:
+            parts.append(
+                "--- EVENTOS RECIENTES EN EL DEBATE ---\n"
+                + "\n".join(news_lines[-8:])
+            )
+
+        await r.aclose()
+    except Exception:
+        pass
+
+    # --- PERSISTED DEBATE STATE (DB) ---
     try:
         result = await session.execute(
             sql_text("SELECT global_summary, temperature, hottest_topic FROM debate_state WHERE id = 1")
@@ -109,7 +198,6 @@ async def _get_live_context(user: dict, bancada_id: int, session) -> str:
     except Exception:
         pass
 
-    # Get bancada state
     try:
         result = await session.execute(
             sql_text("SELECT summary FROM bancada_state WHERE bancada_id = :bid"),
@@ -121,7 +209,40 @@ async def _get_live_context(user: dict, bancada_id: int, session) -> str:
     except Exception:
         pass
 
-    # Get recent interactions count
+    # --- PERSISTENT USER MEMORY: rolling summary + last Q&A ---
+    try:
+        summary = user.get("session_summary")
+        if summary:
+            parts.append(f"--- RESUMEN DE TU SESIÓN PREVIA ---\n{summary}")
+    except Exception:
+        pass
+
+    try:
+        uid = user.get("id")
+        result = await session.execute(
+            sql_text(
+                "SELECT question, response, voice_used, advisor_used "
+                "FROM interactions WHERE user_id = :uid "
+                "ORDER BY created_at DESC LIMIT 5"
+            ),
+            {"uid": uid},
+        )
+        recent = list(result.mappings())
+        if recent:
+            qa_lines = []
+            for iv in reversed(recent):
+                q = (iv["question"] or "")[:200].replace("\n", " ")
+                r = (iv["response"] or "")[:260].replace("\n", " ")
+                tag = iv.get("advisor_used") or iv.get("voice_used") or ""
+                qa_lines.append(f"[{tag}] Tú preguntaste: {q}\nAsesor: {r}")
+            parts.append(
+                "--- ÚLTIMAS CONSULTAS DE ESTE PARTICIPANTE ---\n"
+                "(el equipo YA le contestó esto; apóyate en lo anterior)\n\n"
+                + "\n\n".join(qa_lines)
+            )
+    except Exception:
+        pass
+
     try:
         result = await session.execute(
             sql_text(
@@ -136,4 +257,13 @@ async def _get_live_context(user: dict, bancada_id: int, session) -> str:
     except Exception:
         pass
 
-    return "\n\n".join(parts)
+    if parts:
+        preamble = (
+            "INSTRUCCIÓN: El siguiente bloque es el ESTADO EN TIEMPO REAL del "
+            "debate. Antes de responder, léelo y haz referencia explícita a "
+            "cualquier tuit, bomba, fake news, alerta o votación relevante. "
+            "NUNCA respondas como si no estuvieras al tanto de lo que acaba "
+            "de pasar."
+        )
+        return preamble + "\n\n" + "\n\n".join(parts)
+    return ""

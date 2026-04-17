@@ -147,6 +147,9 @@ class ChatAgent(BaseAgent):
         elif command == "/preparar_ponencia":
             from handlers.ponencia_handler import handle_preparar_ponencia
             await handle_preparar_ponencia(self, user_id, chat_id, args)
+        elif command == "/tutorial":
+            from handlers.tutorial_handler import handle_tutorial
+            await handle_tutorial(self, user_id, chat_id)
         elif command == "/tuitear":
             await self._handle_tuitear(user_id, chat_id, args)
         elif command == "/asesores":
@@ -348,12 +351,86 @@ class ChatAgent(BaseAgent):
         if coords:
             await self.bus.raw.publish("interaction:live", json.dumps(event_data))
 
+        # Refresh rolling session_summary every 5 interactions (background)
+        asyncio.create_task(self._maybe_refresh_summary(user["id"], user_id))
+
         # Send response with advisor bar (5 emoji buttons)
         from core.advisors import get_advisor_bar, ADVISORS
         adv_info = ADVISORS.get(advisor_key, {})
         advisor_label = f"\n\n_{adv_info.get('emoji', '')} {adv_info.get('nombre', '')}_"
         bar = json.dumps({"inline_keyboard": get_advisor_bar()})
         await self._send_response(chat_id, response + advisor_label, reply_markup=bar)
+
+    async def _maybe_refresh_summary(self, db_user_id: int, telegram_id: int):
+        """Resume la sesión del participante cada 5 interacciones.
+
+        Guarda un resumen en users.session_summary para que los asesores
+        nunca pierdan el contexto histórico, aunque la ventana del LLM se
+        llene.
+        """
+        try:
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+
+                # Count total interactions
+                total = (await session.execute(
+                    sql_text("SELECT COUNT(*) FROM interactions WHERE user_id = :uid"),
+                    {"uid": db_user_id},
+                )).scalar() or 0
+
+                # Only refresh every 5 interactions
+                if total == 0 or total % 5 != 0:
+                    return
+
+                # Read last 15 interactions
+                rows = (await session.execute(
+                    sql_text(
+                        "SELECT question, response, advisor_used "
+                        "FROM interactions WHERE user_id = :uid "
+                        "ORDER BY created_at DESC LIMIT 15"
+                    ),
+                    {"uid": db_user_id},
+                )).mappings().all()
+
+                previous = (await session.execute(
+                    sql_text("SELECT session_summary FROM users WHERE id = :uid"),
+                    {"uid": db_user_id},
+                )).scalar() or ""
+
+            history_text = "\n\n".join(
+                f"[{r['advisor_used'] or '?'}] P: {(r['question'] or '')[:180]}\n"
+                f"R: {(r['response'] or '')[:260]}"
+                for r in reversed(rows)
+            )
+            system = (
+                "Eres un redactor que mantiene la memoria del asesor de un "
+                "participante en una simulación legislativa sobre el "
+                "proyecto SIADR. Actualiza el resumen para que el próximo "
+                "asesor sepa qué ha preguntado el participante, qué le han "
+                "respondido, qué posición viene sosteniendo y qué tareas o "
+                "compromisos quedan abiertos. Máximo 220 palabras, en "
+                "bullets. Nada de saludos ni meta-comentarios."
+            )
+            user_msg = (
+                f"Resumen previo:\n{previous or '(vacío)'}\n\n"
+                f"Últimas interacciones (más recientes al final):\n\n{history_text}\n\n"
+                "Redacta el resumen actualizado."
+            )
+            summary = await self.llm.generate(
+                system, user_msg, temperature=0.4, max_tokens=350, use_cache=False,
+            )
+
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                await session.execute(
+                    sql_text(
+                        "UPDATE users SET session_summary = :s, "
+                        "last_summary_at = NOW() WHERE id = :uid"
+                    ),
+                    {"s": summary[:4000], "uid": db_user_id},
+                )
+        except Exception as e:
+            logger.warning(f"Session summary refresh failed for {telegram_id}: {e}")
 
     async def _handle_voice(self, user_id: int, chat_id: int, message: dict):
         """Envía nota de voz al Agente Audio para transcripción."""

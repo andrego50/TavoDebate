@@ -1,0 +1,340 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{metropolis}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{tikz}
+
+% Paleta personalizada
+\definecolor{navy}{HTML}{1A2744}
+\definecolor{teal}{HTML}{028090}
+\definecolor{accent}{HTML}{C74B2A}
+\definecolor{gold}{HTML}{D4A843}
+\definecolor{verde}{HTML}{2D6A4F}
+\definecolor{gris}{HTML}{6C757D}
+
+% Aplicar paleta al tema metropolis
+\setbeamercolor{normal text}{fg=navy, bg=white}
+\setbeamercolor{alerted text}{fg=accent}
+\setbeamercolor{example text}{fg=teal}
+\setbeamercolor{structure}{fg=navy}
+\setbeamercolor{frametitle}{bg=navy, fg=white}
+\setbeamercolor{title separator}{fg=teal}
+\setbeamercolor{progress bar}{fg=teal}
+\setbeamercolor{progress bar in head/foot}{fg=teal}
+\setbeamercolor{progress bar in section page}{fg=teal}
+
+% Bloques personalizados
+\setbeamercolor{block title}{bg=teal, fg=white}
+\setbeamercolor{block body}{bg=teal!10, fg=navy}
+
+\setbeamercolor{block title alerted}{bg=accent, fg=white}
+\setbeamercolor{block body alerted}{bg=accent!10, fg=navy}
+
+\setbeamercolor{block title example}{bg=verde, fg=white}
+\setbeamercolor{block body example}{bg=verde!10, fg=navy}
+
+% Bloque oro para facciones condicionales
+\newenvironment{goldblock}[1]{%
+  \setbeamercolor{block title}{bg=gold, fg=navy}
+  \setbeamercolor{block body}{bg=gold!15, fg=navy}
+  \begin{block}{#1}
+}{%
+  \end{block}
+}
+
+\newenvironment{grayblock}[1]{%
+  \setbeamercolor{block title}{bg=gris, fg=white}
+  \setbeamercolor{block body}{bg=gris!15, fg=navy}
+  \begin{block}{#1}
+}{%
+  \end{block}
+}
+
+\title{Simulación: Sesión de Concejo Municipal}
+\subtitle{Proyecto de Acuerdo: Actualización Catastral en los municipios de Cundinamarca}
+\author{Prof.~Andrés Pérez Coronado, PhD}
+\institute{Especialización en Gobernanza y Desarrollo Territorial\\Universidad del Rosario}
+\date{Abril 2026}
+
+\begin{document}
+
+% ----------------------------------------------------------------------
+% SLIDE 1 — PORTADA
+% ----------------------------------------------------------------------
+\maketitle
+
+% ----------------------------------------------------------------------
+% SLIDE 2 — OBJETIVO DEL EJERCICIO
+% ----------------------------------------------------------------------
+\begin{frame}{Objetivo del ejercicio}
+  \small
+  Simular una sesión plenaria de concejo municipal donde ustedes, como
+  concejales de distintos municipios de Cundinamarca, deben \textbf{debatir y
+  votar} un proyecto de acuerdo sobre la actualización catastral
+  multipropósito.
+  \vspace{0.6em}
+
+  \begin{enumerate}
+    \item \textbf{\textcolor{teal}{Argumentar con datos}} --- construir
+    posiciones basadas en evidencia, no en intuición.
+
+    \item \textbf{\textcolor{accent}{Negociar intereses contrapuestos}}
+    --- encontrar soluciones que equilibren recaudo fiscal y bienestar
+    ciudadano.
+
+    \item \textbf{\textcolor{verde}{Pensar como gerentes públicos}} ---
+    aplicar herramientas de gerencia estratégica a un problema real.
+  \end{enumerate}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% SLIDE 3 — EL PROBLEMA (CONTEXTO REAL)
+% ----------------------------------------------------------------------
+\begin{frame}{El problema: actualización catastral en Cundinamarca}
+  {\color{accent}\textbf{Contexto real --- esto está pasando ahora}}
+  \vspace{0.4em}
+
+  \small
+  \begin{itemize}\itemsep2pt
+    \item La Agencia Catastral de Cundinamarca actualizó los avalúos en
+    \textbf{76 municipios}.
+    \item Se han recibido más de \textbf{12.000 reclamaciones} de
+    ciudadanos inconformes.
+    \item Algunos predios rurales vieron incrementos de hasta \textbf{300\%}
+    en su avalúo catastral.
+    \item El impuesto predial se calcula sobre el avalúo: si el avalúo
+    sube, el predial sube.
+    \item Campesinos y pequeños propietarios alertan que no pueden pagar.
+    \item Los municipios necesitan el recaudo para financiar inversión
+    social.
+    \item La Gobernación activó la \textit{Ruta del Diálogo Catastral}
+    para atender reclamos.
+    \item \textbf{13 zonas} fueron declaradas críticas con ventanillas
+    exclusivas.
+  \end{itemize}
+  \vspace{0.3em}
+  {\scriptsize \textit{Fuente: Gobernación de Cundinamarca, Ruta del
+  Diálogo Catastral, 2024--2026.}}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% SLIDE 4 — PROYECTO DE ACUERDO (FICTICIO)
+% ----------------------------------------------------------------------
+\begin{frame}{Proyecto de Acuerdo No.~001 de 2026}
+  \scriptsize
+  \begin{block}{Articulado}
+    \begin{description}\itemsep3pt
+      \item[\textcolor{navy}{Art.~1}] Adóptese la actualización catastral
+      multipropósito como base para el cálculo del impuesto predial a
+      partir del año gravable \textbf{2027}.
+
+      \item[\textcolor{navy}{Art.~2}] Establézcase un \textbf{régimen de
+      transición de 3 años} con incrementos graduales: Año~1 (30\%),
+      Año~2 (60\%), Año~3 (100\%) del nuevo avalúo.
+
+      \item[\textcolor{navy}{Art.~3}] Créese un \textbf{fondo de alivio
+      tributario} para predios rurales menores a 5~ha cuyos propietarios
+      estén en SISBEN A o B.
+
+      \item[\textcolor{navy}{Art.~4}] Destínese el \textbf{40\% del mayor
+      recaudo} a inversión en vías terciarias, agua potable y
+      conectividad rural del municipio.
+
+      \item[\textcolor{navy}{Art.~5}] La administración municipal rendirá
+      \textbf{informe trimestral} al Concejo sobre recaudo, reclamos y
+      ejecución del fondo de alivio.
+    \end{description}
+  \end{block}
+  \vspace{0.3em}
+  {\color{accent}\textbf{\scriptsize ⚠ DOCUMENTO FICTICIO PARA EJERCICIO
+  ACADÉMICO}}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% SLIDE 5 — LOS ROLES (4 FACCIONES)
+% ----------------------------------------------------------------------
+\begin{frame}{Los roles: 4 facciones en el Concejo}
+  \tiny
+  \begin{columns}[t]
+    \begin{column}{0.49\textwidth}
+      \begin{exampleblock}{A FAVOR (verde · 35\%)}
+        \textit{«Apoyar la actualización. El municipio necesita recursos
+        y el predial está desactualizado hace 10+ años.»}
+        \vspace{0.3em}\\
+        \textbf{Argumentos:} rezago catastral, equidad tributaria,
+        financiación del Plan de Desarrollo.
+      \end{exampleblock}
+
+      \begin{goldblock}{A FAVOR CON CONDICIONES (gold · 25\%)}
+        \textit{«Aprobar solo si se modifican artículos: ampliar
+        transición a 5 años, más beneficiarios en el fondo de alivio,
+        auditoría externa.»}
+        \vspace{0.3em}\\
+        \textbf{Argumentos:} gradualidad, protección social, control y
+        transparencia.
+      \end{goldblock}
+    \end{column}
+
+    \begin{column}{0.49\textwidth}
+      \begin{alertblock}{EN CONTRA (rojo · 30\%)}
+        \textit{«Rechazar. Los avalúos son excesivos, no consultan la
+        capacidad de pago.»}
+        \vspace{0.3em}\\
+        \textbf{Argumentos:} impacto social, errores en avalúos,
+        capacidad de pago, riesgo electoral.
+      \end{alertblock}
+
+      \begin{grayblock}{INDECISOS (gris · 10\%)}
+        \textit{«No tienen posición definida. Su voto define el
+        resultado. Representan municipios pequeños con poca
+        información.»}
+        \vspace{0.3em}\\
+        \textbf{Argumentos:} necesitan datos, quieren entender el
+        impacto real.
+      \end{grayblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% SLIDE 6 — DATOS PARA EL DEBATE
+% ----------------------------------------------------------------------
+\begin{frame}{Datos para argumentar}
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}X l l@{}}
+    \toprule
+    \textbf{Indicador} & \textbf{Dato} & \textbf{Fuente} \\
+    \midrule
+    Municipios actualizados en Cundinamarca & 76 de 116 & Gobernación, 2026 \\
+    Reclamaciones ciudadanas recibidas & Más de 12.000 & Agencia Catastral \\
+    Zonas declaradas críticas & 13 zonas & Ruta del Diálogo \\
+    Incremento promedio en avalúos rurales & Entre 80\% y 300\% & Reportes de prensa \\
+    Rezago catastral promedio antes de actualización & 10--15 años & IGAC / DNP \\
+    \% del predial en ingresos propios municipales & 30--60\% según municipio & DNP \\
+    Hogares rurales Cund.\ sin internet & Solo 41,9\% conectados & DANE, ENTIC 2024 \\
+    \bottomrule
+  \end{tabularx}
+  \vspace{0.6em}
+
+  \begin{block}{\small Instrucción}
+    \scriptsize Cada facción debe usar \textbf{al menos 2 datos} de esta
+    tabla en sus argumentos.
+  \end{block}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% SLIDE 7 — REGLAS DE LA SIMULACIÓN
+% ----------------------------------------------------------------------
+\begin{frame}{Reglas de la simulación}
+  \small
+  \begin{enumerate}\itemsep3pt
+    \item \textbf{\textcolor{teal}{Formación de facciones (5 min)}}
+    --- se asignan roles; cada grupo elige vocero y prepara posición.
+
+    \item \textbf{\textcolor{teal}{Presentación de posiciones (3 min
+    c/u)}} --- cada facción expone; deben usar datos.
+
+    \item \textbf{\textcolor{teal}{Debate abierto (15 min)}} ---
+    interpelaciones entre facciones; se permite proponer modificaciones.
+
+    \item \textbf{\textcolor{teal}{Negociación (10 min)}} --- las
+    facciones negocian cambios para lograr votos.
+
+    \item \textbf{\textcolor{teal}{Votación nominal (5 min)}} --- cada
+    concejal vota SÍ, NO o ABSTENCIÓN. \textbf{Mayoría simple}.
+
+    \item \textbf{\textcolor{teal}{Debrief (10 min)}} --- reflexión
+    grupal.
+  \end{enumerate}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% SLIDE 8 — PREGUNTAS GUÍA
+% ----------------------------------------------------------------------
+\begin{frame}{Preguntas guía para preparar su posición}
+  \scriptsize
+  \begin{enumerate}\itemsep2pt
+    \item ¿Cuánto recauda su municipio por predial hoy y cuánto necesita
+    para el Plan de Desarrollo?
+    \item ¿Qué porcentaje de los predios de su municipio son rurales
+    vs.\ urbanos?
+    \item ¿Cuántos ciudadanos han reclamado en su municipio?
+    \item ¿El régimen de transición de 3 años es suficiente o debería
+    ser más largo?
+    \item ¿El fondo de alivio tributario cubre a quienes realmente lo
+    necesitan?
+    \item ¿Qué pasa si se rechaza el proyecto? ¿De dónde sale la plata
+    para inversión?
+    \item ¿Qué modificaciones propondría usted a los artículos del
+    proyecto?
+    \item ¿Cómo le explicaría su voto a los ciudadanos de su
+    municipio?
+  \end{enumerate}
+\end{frame}
+
+% ----------------------------------------------------------------------
+% SLIDE 9 — ¡COMIENZA LA SESIÓN!
+% ----------------------------------------------------------------------
+{
+\setbeamercolor{background canvas}{bg=navy}
+\setbeamercolor{normal text}{fg=white}
+\begin{frame}[plain]
+  \centering
+  \vspace{0.6cm}
+  {\color{white}\Huge\textbf{¡Comienza la sesión!}}
+  \vspace{0.6cm}
+
+  {\color{gold}\Large Paso 1: Facciones --- reúnanse y preparen su
+  posición}
+  \vspace{1.4cm}
+
+  {\color{white}\Huge\textbf{5 minutos}}
+  \vspace{1.2cm}
+
+  {\color{white}\normalsize
+  Elijan vocero $\cdot$ Definan 3 argumentos $\cdot$ Usen los datos de
+  la slide 6}
+\end{frame}
+}
+
+% ----------------------------------------------------------------------
+% SLIDE 10 — REFLEXIÓN / DEBRIEF
+% ----------------------------------------------------------------------
+\begin{frame}{Reflexión: ¿Qué aprendimos?}
+  \tiny
+  \begin{columns}[t]
+    \begin{column}{0.49\textwidth}
+      \begin{block}{Sobre el uso de datos}
+        ¿Fue más fácil argumentar cuando tenían cifras concretas? ¿Qué
+        datos les faltaron?
+      \end{block}
+      \begin{exampleblock}{Sobre la gerencia estratégica}
+        ¿El proyecto resuelve un problema o crea otros? ¿Cómo lo
+        mejorarían?
+      \end{exampleblock}
+    \end{column}
+
+    \begin{column}{0.49\textwidth}
+      \begin{alertblock}{Sobre la negociación política}
+        ¿Cómo lograron (o no) convencer a los indecisos? ¿Qué
+        concesiones hicieron?
+      \end{alertblock}
+      \begin{goldblock}{Sobre su rol como concejales}
+        ¿Toman decisiones así en sus concejos reales? ¿Tienen acceso a
+        datos para debatir?
+      \end{goldblock}
+    \end{column}
+  \end{columns}
+  \vspace{0.8em}
+  \centering
+  \textit{\color{navy}\small «La IA y los datos son herramientas. Las
+  decisiones las toman ustedes.»}
+\end{frame}
+
+\end{document}

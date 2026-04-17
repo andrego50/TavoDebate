@@ -11,6 +11,19 @@ Cada participante:
 - Propone enmiendas, negocia con otras bancadas
 - **Solo los concejales votan** el proyecto al final
 
+### 🧠 Memoria y contexto en tiempo real de los asesores
+
+Los asesores no responden a ciegas. Cada mensaje les inyecta:
+
+- **Fase actual** del ejercicio (registro, debate, votación…)
+- **Últimos 6 tuits** publicados en pantalla (incluyendo quién respondió a quién)
+- **Últimos eventos** del debate: bombas, fake news, alertas, comunicados, presiones
+- **Votación en curso o última cerrada** con su resultado
+- **Últimas 5 consultas** de ese participante al equipo de asesores
+- **Resumen persistente** de la sesión del participante, refrescado automáticamente cada 5 interacciones con un LLM en background (queda guardado en `users.session_summary`)
+
+Si alguien pide a su asesor «retoma lo que hablábamos hace una hora», el asesor ya tiene el contexto y no lo pierde al crecer la conversación.
+
 Tú como dinamizador controlas las fases, lanzas eventos sorpresa y monitoreas la actividad desde el bot y el geodashboard.
 
 ---
@@ -309,6 +322,7 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
 
 | Comando | Qué hace |
 |---------|----------|
+| `/tutorial` | 🎓 Tutorial del dinamizador — repaso de todos tus comandos |
 | `/start` | Panel de dinamizador |
 | `/estado` | Stats del ejercicio (usuarios, interacciones, votos por bancada) |
 | `/fase` | Muestra botones para elegir fase + resumen de participantes |
@@ -334,6 +348,7 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
 
 | Comando | Qué hace |
 |---------|----------|
+| `/tutorial` | 🎓 Tutorial contextual — el bot le explica a cada rol qué puede hacer con su agente |
 | `/start` | Registrarse (5 pasos, todo por botones salvo el nombre) |
 | `/help` | Ver comandos |
 | `/estado` | Mi resumen personal |
@@ -343,8 +358,8 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
 | `/contralor` | Voz: Control fiscal |
 | `/empresa` | Voz: Empresa tech |
 | `/alcalde` | Voz: Alcalde proponente |
-| `/preparar_ponencia` | La IA arma tu ponencia según tu rol y causa |
-| `/preparar_ponencia <ideas>` | Ponencia basada en tus ideas |
+| `/preparar_ponencia` | Concejales: ponencia de 5 puntos. **Alcalde**: entrevista guiada de 8 preguntas → ponencia de apertura |
+| `/preparar_ponencia <ideas>` | Ponencia basada en tus ideas (sólo no-alcalde) |
 | `/proponer <texto>` | Proponer enmienda |
 | `/propuestas_todas` | Ver todas las propuestas |
 | `/apoyar N` | Apoyar propuesta #N |

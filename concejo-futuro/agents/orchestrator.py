@@ -101,6 +101,7 @@ class Orchestrator(BaseAgent):
 
         # Comandos para usuarios normales (concejales)
         user_commands = [
+            {"command": "tutorial", "description": "🎓 Tutorial — cómo usar tu agente"},
             {"command": "start", "description": "Iniciar / reiniciar registro"},
             {"command": "help", "description": "Ver comandos disponibles"},
             {"command": "estado", "description": "Tu resumen personal"},
@@ -120,6 +121,7 @@ class Orchestrator(BaseAgent):
 
         # Comandos para admin/dinamizador (NO incluye comandos de concejal)
         admin_commands = [
+            {"command": "tutorial", "description": "🎓 Tutorial — comandos del dinamizador"},
             {"command": "start", "description": "Panel de dinamizador"},
             {"command": "estado", "description": "Stats del ejercicio"},
             {"command": "fase", "description": "Cambiar fase del ejercicio"},
