@@ -44,6 +44,74 @@ GRUPOS_ONBOARDING = {
 }
 
 
+async def _count_titulares(rol_key: str, exclude_tid: int | None = None) -> int:
+    """Cuántos usuarios activos ya tienen este rol."""
+    from sqlalchemy import text as sql_text
+    async with get_session() as session:
+        if exclude_tid is not None:
+            result = await session.execute(
+                sql_text(
+                    "SELECT COUNT(*) FROM users WHERE rol = :rol "
+                    "AND onboarding_complete = true AND telegram_id != :tid"
+                ),
+                {"rol": rol_key, "tid": exclude_tid},
+            )
+        else:
+            result = await session.execute(
+                sql_text(
+                    "SELECT COUNT(*) FROM users WHERE rol = :rol "
+                    "AND onboarding_complete = true"
+                ),
+                {"rol": rol_key},
+            )
+    return result.scalar() or 0
+
+
+async def _show_roles_menu(agent, user_id: int, chat_id: int, grupo: dict):
+    """Muestra los sub-roles del grupo, marcando los que ya llegaron a su
+    cupo máximo (max_titulares) como «(cupo lleno)» y deshabilitados."""
+    async with get_session() as session:
+        from sqlalchemy import text as sql_text
+        await session.execute(
+            sql_text(
+                "UPDATE users SET onboarding_step = 3 WHERE telegram_id = :tid"
+            ),
+            {"tid": user_id},
+        )
+
+    keyboard = []
+    for rk in grupo["roles"]:
+        rol_info = ROLES[rk]
+        max_t = rol_info.get("max_titulares")
+        ocupados = 0
+        if max_t is not None:
+            ocupados = await _count_titulares(rk, exclude_tid=user_id)
+
+        if max_t is not None and ocupados >= max_t:
+            # Cupo lleno → botón deshabilitado (callback sin acción)
+            label = f"🔒 {rol_info['nombre']} — cupo lleno ({ocupados}/{max_t})"
+            keyboard.append([{"text": label, "callback_data": "cancel_action"}])
+        elif max_t is not None:
+            label = f"{rol_info['nombre']} ({ocupados}/{max_t})"
+            keyboard.append([{"text": label, "callback_data": f"onboard_rol_{rk}"}])
+        else:
+            keyboard.append([{
+                "text": rol_info["nombre"],
+                "callback_data": f"onboard_rol_{rk}",
+            }])
+
+    await agent.bus.stream_add("telegram:outgoing", {
+        "chat_id": str(chat_id),
+        "text": (
+            f"Grupo: *{grupo['label']}*\n\n"
+            f"*Paso 2b:* Selecciona tu rol específico.\n"
+            f"_Los roles con 🔒 están con cupo lleno._"
+        ),
+        "parse_mode": "Markdown",
+        "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+    })
+
+
 async def _show_provincias(agent, chat_id: int):
     """Muestra el selector de provincias (paso 3 del nuevo flujo)."""
     keyboard = []
@@ -268,37 +336,45 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
         if not grupo:
             return
 
-        # Todos los grupos (incluido concejo ahora) muestran sub-roles
-        async with get_session() as session:
-            from sqlalchemy import text as sql_text
-            await session.execute(
-                sql_text(
-                    "UPDATE users SET onboarding_step = 3 WHERE telegram_id = :tid"
-                ),
-                {"tid": user_id},
-            )
-
-        keyboard = [
-            [{
-                "text": ROLES[rk]["nombre"],
-                "callback_data": f"onboard_rol_{rk}",
-            }]
-            for rk in grupo["roles"]
-        ]
-        await agent.bus.stream_add("telegram:outgoing", {
-            "chat_id": str(chat_id),
-            "text": (
-                f"Grupo: *{grupo['label']}*\n\n"
-                f"*Paso 2b:* Selecciona tu rol específico:"
-            ),
-            "parse_mode": "Markdown",
-            "reply_markup": json.dumps({"inline_keyboard": keyboard}),
-        })
+        await _show_roles_menu(agent, user_id, chat_id, grupo)
 
     elif step == "rol":
         rol_key = parts[2]
         if rol_key not in ROLES:
             return
+
+        # Enforce max_titulares (excluding this user if they already had
+        # this role — idempotent re-selection is fine)
+        max_titulares = ROLES[rol_key].get("max_titulares")
+        if max_titulares is not None:
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                result = await session.execute(
+                    sql_text(
+                        "SELECT COUNT(*) FROM users WHERE rol = :rol "
+                        "AND onboarding_complete = true "
+                        "AND telegram_id != :tid"
+                    ),
+                    {"rol": rol_key, "tid": user_id},
+                )
+                ocupados = result.scalar() or 0
+            if ocupados >= max_titulares:
+                # Re-show the role menu for this group, marking cupos llenos
+                rol_info = ROLES[rol_key]
+                grupo_key = rol_info.get("grupo")
+                grupo = next(
+                    (g for k, g in GRUPOS_ONBOARDING.items() if k == grupo_key),
+                    None,
+                )
+                await agent._send_response(
+                    chat_id,
+                    f"⚠️ El cupo de *{rol_info['nombre']}* está lleno "
+                    f"(máx {max_titulares}). Elige otro rol del grupo."
+                )
+                if grupo:
+                    await _show_roles_menu(agent, user_id, chat_id, grupo)
+                return
+
         async with get_session() as session:
             from sqlalchemy import text as sql_text
             await session.execute(

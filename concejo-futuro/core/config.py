@@ -79,6 +79,7 @@ ROLES = {
         "grupo": "concejo",
         "descripcion": "Preside sesiones, abre votación por artículo y comunica acuerdos aprobados",
         "puede_votar": True,
+        "max_titulares": 1,
     },
     "concejal": {
         "nombre": "🏛️ Concejal",
@@ -92,36 +93,42 @@ ROLES = {
         "grupo": "gobierno",
         "descripcion": "Defiende el proyecto SIADR ante el Concejo",
         "puede_votar": False,
+        "max_titulares": 1,
     },
     "sec_planeacion": {
         "nombre": "📐 Secretario de Planeación",
         "grupo": "gobierno",
         "descripcion": "Datos técnicos, viabilidad y metodología del SIADR",
         "puede_votar": False,
+        "max_titulares": 2,
     },
     "sec_hacienda": {
         "nombre": "💰 Secretario de Hacienda",
         "grupo": "gobierno",
         "descripcion": "Presupuesto, regalías y sostenibilidad financiera",
         "puede_votar": False,
+        "max_titulares": 2,
     },
     "sec_agricultura": {
         "nombre": "🌾 Secretario de Agricultura",
         "grupo": "gobierno",
         "descripcion": "Componente agro, UMATA y familias campesinas",
         "puede_votar": False,
+        "max_titulares": 2,
     },
     "dir_tic": {
         "nombre": "📡 Director de TIC",
         "grupo": "gobierno",
         "descripcion": "Conectividad, infraestructura tecnológica e IoT",
         "puede_votar": False,
+        "max_titulares": 2,
     },
     "dir_umata": {
         "nombre": "🧑‍🌾 Director UMATA",
         "grupo": "gobierno",
         "descripcion": "Puente entre tecnología y comunidades campesinas",
         "puede_votar": False,
+        "max_titulares": 2,
     },
     # === SOCIEDAD CIVIL (opinan, presionan, no votan) ===
     "lider_campesino": {
@@ -173,6 +180,7 @@ ROLES = {
         "grupo": "control",
         "descripcion": "Vigila el uso de recursos públicos",
         "puede_votar": False,
+        "max_titulares": 1,
     },
     "personero": {
         "nombre": "⚖️ Personero Municipal",
