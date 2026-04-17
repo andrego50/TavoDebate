@@ -115,12 +115,12 @@ class RedisBus:
     # --- Rate limiting ---
 
     async def check_rate_limit(
-        self, user_id: int, max_per_min: int = 6
+        self, user_id: int, max_per_min: int = 20
     ) -> bool:
-        """Límite por defecto: 6 msgs/min por usuario. Con 150 participantes
-        eso da un máximo de 900 msgs/min al sistema (Tavo puede disparar
-        hasta 4× requests al LLM por mensaje, total ~3600 req/min, dentro
-        del rango manejable por DeepSeek + fallback a Kimi)."""
+        """20 msgs/min por usuario (≈1 cada 3s). Solo previene loops
+        accidentales de botones o bots; la participación humana normal
+        no lo roza. Los tokens no son la limitante — el circuit breaker
+        al LLM y el pool de DB son las verdaderas líneas de defensa."""
         key = f"ratelimit:{user_id}"
         count = await self.redis.incr(key)
         if count == 1:
