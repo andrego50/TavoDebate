@@ -109,7 +109,14 @@ async def _load_draft(user_id: int, kind: str) -> str | None:
 
 async def _show_draft_preview(agent, chat_id: int, user_id: int, kind: str):
     """Genera borrador contextual y muestra preview con botones."""
-    context = await _build_context_snapshot()
+    await agent._send_response(chat_id, f"⏳ Generando borrador de {kind}...")
+
+    try:
+        context = await _build_context_snapshot()
+    except Exception as e:
+        logger.error(f"Context snapshot failed: {e}", exc_info=True)
+        context = "Sin contexto disponible."
+
     draft = await _generate_draft(agent, kind, context)
     if not draft:
         await agent._send_response(
