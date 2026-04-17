@@ -153,15 +153,25 @@ class ChatAgent(BaseAgent):
         elif command == "/tuitear":
             await self._handle_tuitear(user_id, chat_id, args)
         elif command == "/asesores":
-            from core.advisors import get_advisor_keyboard, ADVISORS
+            from core.advisors import get_advisor_keyboard, ADVISORS, TEAM_KEY, TEAM_META
             current = await self._get_active_advisor(user_id)
-            adv_info = ADVISORS.get(current, {})
+            if current == TEAM_KEY:
+                label = f"{TEAM_META['emoji']} {TEAM_META['nombre']}"
+            else:
+                adv_info = ADVISORS.get(current, {})
+                label = f"{adv_info.get('emoji', '')} {adv_info.get('nombre', current)}"
             keyboard = json.dumps({"inline_keyboard": get_advisor_keyboard()})
             await self._send_response(
                 chat_id,
-                f"🧠 *Panel de Asesores*\n\n"
-                f"Asesor activo: {adv_info.get('emoji', '')} {adv_info.get('nombre', current)}\n\n"
-                f"Selecciona un asesor:",
+                "🧠 *Panel de Asesores*\n\n"
+                f"Modo activo: *{label}*\n\n"
+                "• 🧠 *Equipo* (default): tus preguntas se enrutan a los "
+                "asesores relevantes en paralelo y recibes una respuesta "
+                "consolidada con la voz de cada especialista.\n\n"
+                "• Los 5 asesores individuales están especializados en "
+                "dominios estrictos (leyes, comunicación, cifras, política, "
+                "tecnología). Útiles cuando ya sabes a quién necesitas.\n\n"
+                "Selecciona:",
                 reply_markup=keyboard,
             )
         # Voice switch commands
@@ -265,29 +275,48 @@ class ChatAgent(BaseAgent):
 
             # Get active advisor and build prompt
             advisor_key = await self._get_active_advisor(user_id)
-            system_prompt = await build_system_prompt(user, session, advisor_key=advisor_key)
             voice = user.get("active_voice", "asesor_neutral")
-            response = await self.llm.generate(
-                system_prompt, text, cache_voice=f"{voice}_{advisor_key}"
-            )
 
-            # Handle web search if LLM requested one
-            import re
-            search_match = re.search(r'<<<BUSCAR>>>(.*?)<<<FIN_BUSCAR>>>', response, re.DOTALL)
-            if search_match:
-                query = search_match.group(1).strip()
-                from core.web_search import search_web
-                search_results = await search_web(query)
-                augmented = (
-                    f"{text}\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{search_results}\n\n"
-                    "Usa estos resultados para complementar tu respuesta al participante."
+            from core.advisors import TEAM_KEY
+
+            if advisor_key == TEAM_KEY:
+                # Team mode (orquestador): consulta paralela + síntesis
+                from core.advisor_team import consult_team
+                # Base system prompt without a specific advisor section
+                base_system = await build_system_prompt(user, session, advisor_key=None)
+                await self._send_response(
+                    chat_id, "🧠 Tavo está coordinando a tu equipo..."
+                )
+                response = await consult_team(
+                    self.llm, base_system, text, voice,
+                )
+            else:
+                system_prompt = await build_system_prompt(
+                    user, session, advisor_key=advisor_key
                 )
                 response = await self.llm.generate(
-                    system_prompt, augmented, cache_voice=f"{voice}_{advisor_key}_search",
-                    use_cache=False,
+                    system_prompt, text, cache_voice=f"{voice}_{advisor_key}"
                 )
 
+                # Handle web search if LLM requested one (single-advisor path)
+                import re
+                search_match = re.search(r'<<<BUSCAR>>>(.*?)<<<FIN_BUSCAR>>>', response, re.DOTALL)
+                if search_match:
+                    query = search_match.group(1).strip()
+                    from core.web_search import search_web
+                    search_results = await search_web(query)
+                    augmented = (
+                        f"{text}\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{search_results}\n\n"
+                        "Usa estos resultados para complementar tu respuesta al participante."
+                    )
+                    response = await self.llm.generate(
+                        system_prompt, augmented,
+                        cache_voice=f"{voice}_{advisor_key}_search",
+                        use_cache=False,
+                    )
+
             # Clean LLM artifacts from response
+            import re
             response = re.sub(r'<<<[^>]+>>>', '', response).strip()
             response = re.sub(r'\{[^}]*"tipo_alerta"[^}]*\}', '', response).strip()
 
@@ -354,10 +383,13 @@ class ChatAgent(BaseAgent):
         # Refresh rolling session_summary every 5 interactions (background)
         asyncio.create_task(self._maybe_refresh_summary(user["id"], user_id))
 
-        # Send response with advisor bar (5 emoji buttons)
-        from core.advisors import get_advisor_bar, ADVISORS
-        adv_info = ADVISORS.get(advisor_key, {})
-        advisor_label = f"\n\n_{adv_info.get('emoji', '')} {adv_info.get('nombre', '')}_"
+        # Send response with advisor bar (equipo + 5 emoji buttons)
+        from core.advisors import get_advisor_bar, ADVISORS, TEAM_KEY, TEAM_META
+        if advisor_key == TEAM_KEY:
+            advisor_label = f"\n\n_{TEAM_META['emoji']} {TEAM_META['nombre']}_"
+        else:
+            adv_info = ADVISORS.get(advisor_key, {})
+            advisor_label = f"\n\n_{adv_info.get('emoji', '')} {adv_info.get('nombre', '')}_"
         bar = json.dumps({"inline_keyboard": get_advisor_bar()})
         await self._send_response(chat_id, response + advisor_label, reply_markup=bar)
 
@@ -491,15 +523,27 @@ class ChatAgent(BaseAgent):
         elif data.startswith("advisor_"):
             advisor_key = data.replace("advisor_", "")
             await self._set_active_advisor(user_id, advisor_key)
-            from core.advisors import ADVISORS, get_advisor_bar
-            adv = ADVISORS.get(advisor_key, {})
+            from core.advisors import ADVISORS, TEAM_KEY, TEAM_META, get_advisor_bar
             bar = json.dumps({"inline_keyboard": get_advisor_bar()})
-            await self._send_response(
-                chat_id,
-                f"{adv.get('emoji', '')} Asesor cambiado a *{adv.get('nombre', advisor_key)}*\n\n"
-                f"Escribe tu pregunta o usa /asesores para ver el panel completo.",
-                reply_markup=bar,
-            )
+            if advisor_key == TEAM_KEY:
+                await self._send_response(
+                    chat_id,
+                    f"{TEAM_META['emoji']} Modo *{TEAM_META['nombre']}* activado.\n\n"
+                    "Tus preguntas se enrutarán automáticamente a los "
+                    "asesores especializados relevantes. Respuesta "
+                    "consolidada con la voz de cada uno.\n\n"
+                    "Para hablar con un asesor específico, usa /asesores.",
+                    reply_markup=bar,
+                )
+            else:
+                adv = ADVISORS.get(advisor_key, {})
+                await self._send_response(
+                    chat_id,
+                    f"{adv.get('emoji', '')} Asesor cambiado a *{adv.get('nombre', advisor_key)}*\n\n"
+                    "Ahora estás en modo directo con un solo especialista.\n"
+                    "Para volver al modo equipo, toca 🧠 abajo o usa /asesores.",
+                    reply_markup=bar,
+                )
         elif data.startswith(("tweet_reply_", "tweet_quote_")):
             mode = "reply" if data.startswith("tweet_reply_") else "quote"
             try:
@@ -738,12 +782,13 @@ class ChatAgent(BaseAgent):
         })
 
     async def _get_active_advisor(self, telegram_id: int) -> str:
-        """Obtiene el asesor activo del usuario desde Redis."""
+        """Obtiene el asesor activo del usuario desde Redis (default: equipo)."""
+        from core.advisors import TEAM_KEY
         key = f"advisor:{telegram_id}"
         advisor = await self.bus.raw.get(key)
         if isinstance(advisor, bytes):
             advisor = advisor.decode()
-        return advisor or "juridico"
+        return advisor or TEAM_KEY
 
     async def _set_active_advisor(self, telegram_id: int, advisor_key: str):
         """Guarda el asesor activo en Redis con TTL de 24h."""

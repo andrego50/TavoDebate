@@ -13,14 +13,20 @@ TUTORIAL_HEADER = (
 
 
 ASESORES_BLOCK = (
-    "*🤝 Panel de 5 asesores especializados*\n"
-    "Escribe /asesores para elegir entre:\n"
-    "• ⚖️ *Jurídico* — leyes, normatividad, precedentes\n"
-    "• 📢 *Comunicaciones* — discursos, tuits, relato público\n"
-    "• 📊 *Económico* — presupuesto, ROI, costos, regalías\n"
-    "• 🏛️ *Político* — alianzas, bancadas, negociación\n"
-    "• 💻 *Tecnológico* — IoT, datos, viabilidad técnica\n"
-    "Cada asesor puede *buscar en internet* cuando necesite datos frescos."
+    "*🤝 Tavo + equipo de asesores*\n"
+    "Por defecto interactúas con 🧠 *Tavo*, tu jefe de gabinete. Él enruta "
+    "tu pregunta a los asesores relevantes en paralelo y te entrega una "
+    "respuesta consolidada con la voz de cada especialista más su propia "
+    "recomendación ejecutiva.\n\n"
+    "Si quieres hablar con un especialista específico, usa /asesores y "
+    "elige:\n"
+    "• ⚖️ *Jurídico* — marco normativo, vicios, precedentes (cita leyes)\n"
+    "• 📢 *Comunicaciones* — tuits, soundbites, titulares (formato listo)\n"
+    "• 📊 *Económico* — cifras, ROI, presupuesto (siempre cierra con un "
+    "número)\n"
+    "• 🏛️ *Político* — mapa de fuerzas, jugada, contrapartida\n"
+    "• 💻 *Tecnológico* — stack, infraestructura, riesgo técnico\n"
+    "Cada asesor puede *buscar en internet* cuando le falten datos frescos."
 )
 
 
