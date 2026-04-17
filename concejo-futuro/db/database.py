@@ -12,9 +12,10 @@ logger = logging.getLogger(__name__)
 
 engine = create_async_engine(
     settings.database_url,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=8,
+    max_overflow=6,
     pool_pre_ping=True,
+    pool_recycle=1800,
     echo=settings.is_dev,
 )
 
