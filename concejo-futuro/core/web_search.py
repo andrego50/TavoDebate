@@ -12,7 +12,7 @@ async def search_web(query: str, max_results: int = 3) -> str:
         try:
             from duckduckgo_search import DDGS
             with DDGS() as ddgs:
-                results = list(ddgs.text(query, region="co-es", max_results=max_results))
+                results = list(ddgs.text(query, region="wt-wt", max_results=max_results))
             if not results:
                 return "No se encontraron resultados."
             lines = []
