@@ -3,13 +3,73 @@
 import json
 import logging
 
-from core.config import BANCADAS, PROVINCIAS_MUNICIPIOS, get_provincia_for_municipio, settings
+from core.config import BANCADAS, PROVINCIAS_MUNICIPIOS, ROLES, get_provincia_for_municipio, settings
 from core.dossiers import get_dossier
 from core.gabinete import format_power_map
 from core.voices import get_voice_selection_text
 from db.database import get_session
 
 logger = logging.getLogger("handlers.onboarding")
+
+# Grupos de alto nivel para elegir rol en onboarding (step 2).
+# Los concejales son los únicos que eligen bancada (a favor/contra/indeciso).
+# Los demás obtienen bancada automática según su grupo.
+GRUPOS_ONBOARDING = {
+    "concejo": {
+        "label": "🏛️ Concejal",
+        "roles": ["concejal"],  # directo, sin sub-paso
+    },
+    "gobierno": {
+        "label": "👔 Gobierno / Alcaldía",
+        "roles": ["alcalde", "sec_planeacion", "sec_hacienda",
+                  "sec_agricultura", "dir_tic", "dir_umata"],
+        "bancada_auto": 1,  # Gobierno
+    },
+    "sociedad_civil": {
+        "label": "🧑‍🌾 Sociedad civil",
+        "roles": ["lider_campesino", "lider_indigena", "lider_jac",
+                  "ambientalista", "periodista"],
+        "bancada_auto": 3,  # Rural
+    },
+    "empresa": {
+        "label": "🏢 Empresa / Gremio",
+        "roles": ["empresa_tech", "gremio_agro"],
+        "bancada_auto": 4,  # Urbana/Pragmáticos
+    },
+    "control": {
+        "label": "⚖️ Control / Veeduría",
+        "roles": ["contralor", "personero", "veedor"],
+        "bancada_auto": 5,  # Presupuesto/Fiscalización
+    },
+}
+
+
+async def _show_provincias(agent, chat_id: int):
+    """Muestra el selector de provincias (paso 3 del nuevo flujo)."""
+    keyboard = []
+    provincias = sorted(PROVINCIAS_MUNICIPIOS.keys())
+    for i in range(0, len(provincias), 2):
+        row = [
+            {"text": p, "callback_data": f"onboard_prov_{p}"}
+            for p in provincias[i:i+2]
+        ]
+        keyboard.append(row)
+
+    await agent.bus.stream_add("telegram:outgoing", {
+        "chat_id": str(chat_id),
+        "text": "*Paso 3 de 5:* Selecciona tu provincia:",
+        "parse_mode": "Markdown",
+        "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+    })
+
+
+def _bancada_auto_for_rol(rol_key: str) -> int:
+    """Devuelve la bancada automática para un rol no-concejal."""
+    for grupo in GRUPOS_ONBOARDING.values():
+        if rol_key in grupo["roles"] and "bancada_auto" in grupo:
+            return grupo["bancada_auto"]
+    return 1  # fallback
+
 
 # Temas predefinidos para selección determinista en onboarding (single-select)
 # key → (emoji + label para botón, lista de temas canónicos, resumen)
@@ -169,7 +229,7 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
             "🏛️ *Bienvenido al Gran Concejo del Futuro — TavoDebate*\n\n"
             "Soy tu asistente de IA para la simulación legislativa sobre el "
             "proyecto SIADR de Cundinamarca.\n\n"
-            "*Paso 1 de 4:* ¿Cuál es tu nombre completo?"
+            "*Paso 1 de 5:* ¿Cuál es tu nombre completo?"
         )
 
     # Create user record
@@ -202,7 +262,69 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
 
     step = parts[1]
 
-    if step == "prov":
+    if step == "grupo":
+        grupo_key = parts[2]
+        grupo = GRUPOS_ONBOARDING.get(grupo_key)
+        if not grupo:
+            return
+
+        # Concejal: rol directo, saltar al paso de provincia
+        if grupo_key == "concejo":
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                await session.execute(
+                    sql_text(
+                        "UPDATE users SET rol = 'concejal', onboarding_step = 4 "
+                        "WHERE telegram_id = :tid"
+                    ),
+                    {"tid": user_id},
+                )
+            await _show_provincias(agent, chat_id)
+            return
+
+        # Otros grupos: mostrar sub-roles
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            await session.execute(
+                sql_text(
+                    "UPDATE users SET onboarding_step = 3 WHERE telegram_id = :tid"
+                ),
+                {"tid": user_id},
+            )
+
+        keyboard = [
+            [{
+                "text": ROLES[rk]["nombre"],
+                "callback_data": f"onboard_rol_{rk}",
+            }]
+            for rk in grupo["roles"]
+        ]
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                f"Grupo: *{grupo['label']}*\n\n"
+                f"*Paso 2b:* Selecciona tu rol específico:"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+        })
+
+    elif step == "rol":
+        rol_key = parts[2]
+        if rol_key not in ROLES:
+            return
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            await session.execute(
+                sql_text(
+                    "UPDATE users SET rol = :rol, onboarding_step = 4 "
+                    "WHERE telegram_id = :tid"
+                ),
+                {"rol": rol_key, "tid": user_id},
+            )
+        await _show_provincias(agent, chat_id)
+
+    elif step == "prov":
         # User selected a provincia, show municipalities
         provincia = parts[2]
         municipios = PROVINCIAS_MUNICIPIOS.get(provincia, [])
@@ -231,29 +353,69 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
 
         async with get_session() as session:
             from sqlalchemy import text as sql_text
-            await session.execute(
-                sql_text(
-                    "UPDATE users SET municipio = :mun, provincia = :prov, "
-                    "onboarding_step = 3 WHERE telegram_id = :tid"
-                ),
-                {"mun": municipio, "prov": provincia, "tid": user_id},
+            result = await session.execute(
+                sql_text("SELECT rol FROM users WHERE telegram_id = :tid"),
+                {"tid": user_id},
             )
+            rol = (result.scalar() or "concejal")
 
-        # Step 3: Show posición sobre el proyecto (3 opciones simples)
-        keyboard = [
-            [{"text": "✅ A FAVOR del proyecto", "callback_data": "onboard_ban_1"}],
-            [{"text": "❌ EN CONTRA del proyecto", "callback_data": "onboard_ban_2"}],
-            [{"text": "🤔 INDECISO / depende", "callback_data": "onboard_ban_4"}],
-        ]
+            if rol == "concejal":
+                await session.execute(
+                    sql_text(
+                        "UPDATE users SET municipio = :mun, provincia = :prov, "
+                        "onboarding_step = 5 WHERE telegram_id = :tid"
+                    ),
+                    {"mun": municipio, "prov": provincia, "tid": user_id},
+                )
+            else:
+                # No-concejal: asignar bancada automática y saltar al paso de causa
+                bid = _bancada_auto_for_rol(rol)
+                bancada = BANCADAS.get(bid, BANCADAS[1])
+                await session.execute(
+                    sql_text(
+                        "UPDATE users SET municipio = :mun, provincia = :prov, "
+                        "bancada_id = :bid, bancada_nombre = :bname, "
+                        "onboarding_step = 6 WHERE telegram_id = :tid"
+                    ),
+                    {
+                        "mun": municipio, "prov": provincia,
+                        "bid": bid, "bname": bancada["nombre"],
+                        "tid": user_id,
+                    },
+                )
+
+        if rol == "concejal":
+            # Step 5: Posición sobre el proyecto (3 opciones simples)
+            keyboard = [
+                [{"text": "✅ A FAVOR del proyecto", "callback_data": "onboard_ban_1"}],
+                [{"text": "❌ EN CONTRA del proyecto", "callback_data": "onboard_ban_2"}],
+                [{"text": "🤔 INDECISO / depende", "callback_data": "onboard_ban_4"}],
+            ]
+            text_msg = (
+                f"Registrado: *{municipio}* ({provincia})\n\n"
+                "*Paso 4 de 5:* ¿Cuál es tu posición inicial sobre el "
+                "Proyecto de Acuerdo 001-2026 (SIADR)?\n\n"
+                "_Puedes cambiar de opinión durante el debate._"
+            )
+        else:
+            # Saltar bancada — ir directo a causa principal
+            keyboard = []
+            items = list(TEMAS_ONBOARDING.items())
+            for i in range(0, len(items), 2):
+                keyboard.append([
+                    {"text": info["label"], "callback_data": f"onboard_tema_{key}"}
+                    for key, info in items[i:i+2]
+                ])
+            rol_nombre = ROLES.get(rol, {}).get("nombre", rol)
+            text_msg = (
+                f"Registrado: *{municipio}* ({provincia})\n"
+                f"Rol: {rol_nombre}\n\n"
+                f"*Paso 4 de 5:* ¿Cuál es tu causa o tema principal?"
+            )
 
         await agent.bus.stream_add("telegram:outgoing", {
             "chat_id": str(chat_id),
-            "text": (
-                f"Registrado: *{municipio}* ({provincia})\n\n"
-                "*Paso 3 de 4:* ¿Cuál es tu posición inicial sobre el "
-                "Proyecto de Acuerdo 001-2026 (SIADR)?\n\n"
-                "_Puedes cambiar de opinión durante el debate._"
-            ),
+            "text": text_msg,
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
         })
@@ -268,7 +430,7 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
             await session.execute(
                 sql_text(
                     "UPDATE users SET bancada_id = :bid, bancada_nombre = :bname, "
-                    "onboarding_step = 4 WHERE telegram_id = :tid"
+                    "onboarding_step = 6 WHERE telegram_id = :tid"
                 ),
                 {"bid": bancada_id, "bname": bancada["nombre"], "tid": user_id},
             )
@@ -277,7 +439,7 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
             bancada_id, bancada["nombre"]
         )
 
-        # Step 4: show predefined themes as buttons (single-select)
+        # Step 5: show predefined themes as buttons (single-select)
         keyboard = []
         items = list(TEMAS_ONBOARDING.items())
         for i in range(0, len(items), 2):
@@ -293,7 +455,7 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
             "chat_id": str(chat_id),
             "text": (
                 f"Posición inicial: {posicion_label}\n\n"
-                f"*Paso 4 de 4:* ¿Cuál es tu causa principal como concejal?"
+                f"*Paso 5 de 5:* ¿Cuál es tu causa principal como concejal?"
             ),
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
@@ -339,15 +501,28 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
 
         if user:
             bancada = BANCADAS.get(user["bancada_id"], {})
-            posicion_label = {
-                1: "✅ A FAVOR", 2: "❌ EN CONTRA", 4: "🤔 INDECISO"
-            }.get(user["bancada_id"], bancada.get("nombre", "?"))
+            user_rol = user.get("rol") or "concejal"
+            rol_info = ROLES.get(user_rol, {})
+            rol_nombre = rol_info.get("nombre", "🏛️ Concejal")
+
+            if user_rol == "concejal":
+                posicion_label = {
+                    1: "✅ A FAVOR", 2: "❌ EN CONTRA", 4: "🤔 INDECISO"
+                }.get(user["bancada_id"], bancada.get("nombre", "?"))
+                header = (
+                    f"Concejal de {user['municipio']} ({user['provincia']})\n"
+                    f"Posición: {posicion_label}\n"
+                )
+            else:
+                header = (
+                    f"{rol_nombre}\n"
+                    f"{user['municipio']} ({user['provincia']})\n"
+                )
 
             msg = (
                 f"*Registro completado*\n\n"
                 f"*{user['nombre_completo']}*\n"
-                f"Concejal de {user['municipio']} ({user['provincia']})\n"
-                f"Posición: {posicion_label}\n"
+                f"{header}"
                 f"Causa: {info['label']}\n\n"
                 f"{get_voice_selection_text()}\n\n"
                 f"Escribe cualquier pregunta para comenzar."
@@ -392,7 +567,7 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
                 )
             await agent._send_response(
                 chat_id,
-                "✅ Código correcto.\n\n*Paso 1 de 4:* ¿Cuál es tu nombre completo?"
+                "✅ Código correcto.\n\n*Paso 1 de 5:* ¿Cuál es tu nombre completo?"
             )
         else:
             await agent._send_response(
@@ -402,7 +577,7 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
         return
 
     elif step == 1:
-        # Step 1: Save name, show provinces
+        # Step 1: Save name, show role groups
         nombre = text.strip()
         async with get_session() as session:
             from sqlalchemy import text as sql_text
@@ -414,27 +589,23 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
                 {"name": nombre, "tid": user_id},
             )
 
-        # Show provinces as inline keyboard
-        keyboard = []
-        provincias = sorted(PROVINCIAS_MUNICIPIOS.keys())
-        for i in range(0, len(provincias), 2):
-            row = []
-            for prov in provincias[i:i+2]:
-                row.append({
-                    "text": prov,
-                    "callback_data": f"onboard_prov_{prov}",
-                })
-            keyboard.append(row)
+        keyboard = [
+            [{"text": g["label"], "callback_data": f"onboard_grupo_{key}"}]
+            for key, g in GRUPOS_ONBOARDING.items()
+        ]
 
         await agent.bus.stream_add("telegram:outgoing", {
             "chat_id": str(chat_id),
-            "text": f"Hola *{nombre}*.\n\n*Paso 2 de 4:* Selecciona tu provincia:",
+            "text": (
+                f"Hola *{nombre}*.\n\n"
+                f"*Paso 2 de 5:* ¿En qué rol participarás en el Concejo?"
+            ),
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
         })
 
-    elif step in (2, 3, 4):
-        # Steps 2, 3 & 4 expect inline button callbacks, not text
+    elif step in (2, 3, 4, 5, 6):
+        # Steps 2..6 expect inline button callbacks, not text
         await agent._send_response(
             chat_id,
             "Por favor usa los botones de arriba para seleccionar tu opción. "
