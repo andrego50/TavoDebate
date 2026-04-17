@@ -7,9 +7,29 @@ TavoDebate es un simulador legislativo por Telegram donde los participantes asum
 Cada participante:
 - Se registra en 5 pasos con botones (nombre, grupo, rol, provincia, municipio, posición/causa)
 - Elige su grupo institucional: **Concejal**, **Gobierno/Alcaldía**, **Sociedad civil**, **Empresa/Gremio** o **Control/Veeduría**
-- Consulta a **5 asesores especializados** (jurídico ⚖️, comunicaciones 📢, económico 📊, político 🏛️, tecnológico 💻) vía `/asesores` — todos buscan en DuckDuckGo
+- Interactúa por defecto con 🧠 **Tavo**, su jefe de gabinete, que enruta cada pregunta a los 3 asesores más relevantes (de 10 especialistas) en paralelo y entrega una respuesta consolidada + recomendación ejecutiva
+- Puede hablar con un especialista individual en modo directo vía `/asesores`
 - Propone enmiendas, negocia con otras bancadas
 - **Solo los concejales votan** el proyecto al final
+
+### 🧠 Tavo + los 10 asesores
+
+Tavo es el orquestador. Cada asesor tiene **dominio estricto, vocabulario obligatorio, formato propio y prohibiciones explícitas** (el Jurídico no habla de cifras, el Fiscal no habla de métodos de avalúo, etc.), para que se note la diferencia de verdad.
+
+| # | Asesor | Para qué |
+|---|---|---|
+| 1 | ⚖️ Jurídico | Marco normativo, vicios, precedentes — cita leyes y artículos |
+| 2 | 📢 Comunicaciones | Tuits listos, soundbites, titulares, réplicas |
+| 3 | 📊 Económico | Cifras macro, SGP, regalías, ROI, impacto fiscal |
+| 4 | 🏛️ Político | Bancadas, correlación de fuerzas, jugadas y contrapartidas |
+| 5 | 💻 Tecnológico | Stack, infraestructura, riesgo técnico, alternativas |
+| 6 | 🗺️ Catastral | Avalúos, ciclo catastral, CONPES 3958, metodologías |
+| 7 | 🌾 Agrario/Rural | Economía campesina, UAF, capacidad de pago, minifundio |
+| 8 | 💰 Fiscal/Tributario | Predial, tarifas, exenciones, fondo de alivio |
+| 9 | 🤝 Participación ciudadana | Audiencias, veedurías, diálogo social, conflicto |
+| 10 | 📐 Gerencia pública | Cadena de valor, indicadores Sinergia, MGA, BPIN |
+
+Todos pueden **buscar en DuckDuckGo** (`<<<BUSCAR>>>…<<<FIN_BUSCAR>>>`) cuando necesitan datos frescos.
 
 ### 🧠 Memoria y contexto en tiempo real de los asesores
 
@@ -128,7 +148,7 @@ docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro -c "
 1. Activar el PIN: `/pin 1234` (el que quieras)
 2. Proyectar el QR o link del bot en pantalla + decir el PIN en voz alta
 3. Explicar brevemente:
-   > "Entren al bot y sigan los pasos con botones: (1) nombre, (2) rol institucional — concejal, gobierno, sociedad civil, empresa o control, (3) provincia y municipio, (4) si eres concejal: posición inicial (a favor, en contra o indeciso); los demás roles obtienen bancada automática, (5) causa principal. La IA les entregará un dossier personalizado y 5 asesores especializados."
+   > "Entren al bot y sigan los pasos con botones: (1) nombre, (2) rol institucional — concejal, gobierno, sociedad civil, empresa o control, (3) provincia y municipio, (4) si eres concejal: posición inicial (a favor, en contra o indeciso); los demás roles obtienen bancada automática, (5) causa principal. Luego van a interactuar con Tavo, su jefe de gabinete, que coordina 10 asesores especializados."
 
 4. Cambiar la fase (escribe `/fase` y aparecen los botones, o directamente):
    ```
@@ -192,7 +212,7 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
    ```
 
 2. Explicar las voces disponibles:
-   > "Tienen 5 asesores de IA. Cambien de voz con los comandos /ciudadano, /experto, /contralor, /empresa, /alcalde. Cada uno responde desde su perspectiva. Hagan preguntas para preparar sus argumentos."
+   > "Escriban cualquier pregunta y 🧠 Tavo (jefe de gabinete) consulta a los 3 asesores más relevantes de su equipo de 10 — les llega una respuesta consolidada con la voz de cada especialista y la recomendación ejecutiva. Si quieren hablar con un especialista puntual, usen /asesores."
 
 3. Poner timer:
    ```
@@ -352,7 +372,7 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
 | `/start` | Registrarse (5 pasos, todo por botones salvo el nombre) |
 | `/help` | Ver comandos |
 | `/estado` | Mi resumen personal |
-| `/asesores` | Panel de 5 asesores especializados (⚖️📢📊🏛️💻) — todos con DuckDuckGo |
+| `/asesores` | Panel de Tavo (default) + 10 asesores especializados (⚖️📢📊🏛️💻🗺️🌾💰🤝📐) — todos con DuckDuckGo |
 | `/ciudadano` | Voz: Líder campesino |
 | `/experto` | Voz: Científico de datos |
 | `/contralor` | Voz: Control fiscal |

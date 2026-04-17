@@ -66,7 +66,7 @@ Los participantes interactúan vía **Telegram** con un bot que simula un debate
 | Agente | Archivo | Puerto | Función |
 |---|---|---|---|
 | **Orchestrator** | `agents/orchestrator.py` | 8000 | Recibe webhooks de Telegram, enruta mensajes, envía respuestas |
-| **Chat Agent** | `agents/chat_agent.py` | — | Procesa mensajes, genera respuestas con LLM, maneja comandos |
+| **Chat Agent** | `agents/chat_agent.py` | — | Procesa mensajes, corre **Tavo** (orquestador de asesores en `core/advisor_team.py`), maneja comandos y memoria persistente |
 | **Intel Agent** | `agents/intel_agent.py` | — | Clasifica interacciones, genera briefings, detecta cambios de posición |
 | **Control Agent** | `agents/control_agent.py` | — | Ejecuta broadcasts, bombas, fake news, presión, gabinete |
 | **Simulation Agent** | `agents/simulation_agent.py` | — | Timer, fases del taller, timeline de eventos automáticos |
@@ -182,13 +182,13 @@ Cada bancada tiene un **dossier privado** con información confidencial, vulnera
 
 ### 8 Fases del Taller
 
-1. **Registro** — Onboarding por Telegram (4 pasos)
-2. **Ponencia** — Presentación del proyecto con modo ponencia
-3. **Preguntas** — Ronda de preguntas a las voces IA
-4. **Investigación** — Consulta de dossiers y datos
+1. **Registro** — Onboarding por Telegram (5 pasos, todo por botones salvo el nombre)
+2. **Ponencia** — Presentación del proyecto; para el **rol alcalde**, `/preparar_ponencia` dispara una entrevista guiada de 8 preguntas antes de compilar la pieza
+3. **Preguntas** — Tavo coordina al equipo de asesores según la pregunta
+4. **Investigación** — Consulta de dossiers y datos (con búsqueda web DuckDuckGo)
 5. **Debate** — Debate abierto entre bancadas
 6. **Enmiendas** — Propuestas de modificación al articulado
-7. **Votación** — Votación nominal con resultados en vivo
+7. **Votación** — Timer fresco de 5 min por cada `/fase votacion`; al cerrarse, resultado automático con trazabilidad de votaciones previas
 8. **Debriefing** — Revelación de fake news, certificados
 
 ### Elementos Dramáticos
@@ -199,6 +199,48 @@ Cada bancada tiene un **dossier privado** con información confidencial, vulnera
 - **~22 eventos de timeline**: tweets y acciones de stakeholders programados por minuto
 - **Gabinete del alcalde**: 11 entidades como herramienta de presión política
 - **Sistema de presión**: 10 tipos de presión con niveles de gravedad
+
+---
+
+## Tavo + 10 Asesores Especializados
+
+La principal interfaz del participante con el sistema es **🧠 Tavo**, un jefe de gabinete virtual (`core/advisor_team.py`) que por defecto recibe cada pregunta y:
+
+1. **Triage por keywords** (`pick_relevant_advisors` en `core/advisors.py`) selecciona hasta 3 de 10 especialistas.
+2. **Fan-out paralelo** con `asyncio.gather` — cada asesor usa su system prompt estricto (dominio, vocabulario, formato, prohibiciones) y puede hacer una búsqueda web individual (`<<<BUSCAR>>>…<<<FIN_BUSCAR>>>`).
+3. **Síntesis ejecutiva** — Tavo compila las respuestas preservando la voz de cada asesor y cierra con un bloque `🎯 TAVO — Recomendación del gabinete`.
+
+Los 10 dominios (cada uno con formato propio):
+
+| # | Asesor | Formato | Prohibiciones explícitas |
+|---|---|---|---|
+| 1 | ⚖️ Jurídico | Marco normativo → Riesgo → Precedente → Recomendación | No cifras, no tuits, no bancadas |
+| 2 | 📢 Comunicaciones | Tuit / Mensaje-clave + Titular + Soundbite + Réplica | No leyes, no cifras exactas |
+| 3 | 📊 Económico | Cifra-clave → Fuente → Comparativo → Impacto fiscal | No tuits, no bancadas, no leyes |
+| 4 | 🏛️ Político | Objetivo → Mapa de fuerzas → Jugada → Contrapartida → Riesgo | No cifras, no tuits, no leyes |
+| 5 | 💻 Tecnológico | Stack → Infraestructura → Riesgo → Alternativa | No catastro metodológico, no bancadas |
+| 6 | 🗺️ Catastral | Hallazgo → Marco CONPES/Ley → Riesgo catastral → Salida técnica | No tarifas (eso es fiscal) |
+| 7 | 🌾 Agrario/Rural | Perfil productor → Impacto familia → Efecto territorial → Protección | No macro, no tuits |
+| 8 | 💰 Fiscal/Tributario | Tarifa → Norma → Instrumento de alivio → Efecto recaudo | No métodos de avalúo |
+| 9 | 🤝 Participación ciudadana | Actor social → Mecanismo → Cronograma → Riesgo de conflicto | No medios, no bancadas |
+| 10 | 📐 Gerencia pública | Cadena de valor → Indicadores → Arreglo institucional → Hitos | No normas, no tuits |
+
+Cada asesor rechaza explícitamente los dominios de los demás (redirige al especialista correcto) para que la diferenciación sea visible en la respuesta.
+
+---
+
+## Memoria y Contexto en Tiempo Real
+
+Cada mensaje al chat injecta un bloque de contexto en vivo (en `core/memory_manager._get_live_context`) para que Tavo y los asesores nunca respondan a ciegas:
+
+- **Fase actual** del ejercicio (escrita a Redis por `simulation_agent`).
+- **Votación en curso o última cerrada** (desde `voting_sessions`).
+- **Últimos 6 tuits** de la pantalla con marcadores de reply/quote (`tavodebate:recent_tweets`).
+- **Últimos 8 eventos** de la pantalla: bombas, fake news, alertas, presiones, comunicados (`tavodebate:pantalla_history`).
+- **Últimas 5 consultas** del participante con el tag del asesor usado.
+- **Resumen persistente de sesión** (`users.session_summary`) refrescado en background cada 5 interacciones por un LLM que lee las últimas 15 Q&A.
+
+Un preámbulo explícito instruye al LLM a cruzar-referenciar ese bloque antes de responder: *"NUNCA respondas como si no estuvieras al tanto de lo que acaba de pasar."*
 
 ---
 
