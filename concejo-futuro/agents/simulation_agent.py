@@ -77,6 +77,10 @@ class SimulationAgent(BaseAgent):
         phase = args.get("phase", "")
         duration_min = args.get("duration", 0)
 
+        # Votación siempre arranca con timer de 5 min (reinicia en cada entrada a la fase)
+        if phase == "votacion" and duration_min == 0:
+            duration_min = 5
+
         self.current_phase = phase
 
         if duration_min > 0:
@@ -85,6 +89,9 @@ class SimulationAgent(BaseAgent):
                 "end": datetime.now() + timedelta(minutes=duration_min),
                 "total": duration_min * 60,
             }
+        else:
+            # Cualquier cambio de fase sin duración limpia el timer previo
+            self.current_timer = None
 
         await self.bus.publish("layout:change", {
             "phase": phase,
@@ -131,9 +138,118 @@ class SimulationAgent(BaseAgent):
                         "pregenerated": "timer_1min", "send_to": [],
                     })
                 elif remaining <= 0:
+                    expired_name = self.current_timer["name"]
                     self.current_timer = None
+                    if expired_name == "votacion":
+                        try:
+                            await self._close_voting_session()
+                        except Exception as e:
+                            logger.error(f"Error closing voting: {e}", exc_info=True)
 
             await asyncio.sleep(1)
+
+    async def _close_voting_session(self):
+        """Cierra la sesión de votación activa, calcula resultados y difunde."""
+        from db.database import get_session
+        from sqlalchemy import text as sql_text
+
+        async with get_session() as session:
+            result = await session.execute(
+                sql_text(
+                    "SELECT id, description, opened_at FROM voting_sessions "
+                    "WHERE is_open = true AND type = 'proyecto' "
+                    "ORDER BY id DESC LIMIT 1"
+                )
+            )
+            vs = result.mappings().first()
+            if not vs:
+                logger.warning("No open voting session to close")
+                return
+
+            session_id = vs["id"]
+
+            # Tally votes cast in this session window
+            result = await session.execute(
+                sql_text(
+                    "SELECT vote, COUNT(*) as n FROM votes "
+                    "WHERE vote_type = 'proyecto' AND created_at >= :opened "
+                    "GROUP BY vote"
+                ),
+                {"opened": vs["opened_at"]},
+            )
+            counts = {row["vote"]: row["n"] for row in result.mappings()}
+
+            si = counts.get("si", 0)
+            no = counts.get("no", 0)
+            abst = counts.get("abstencion", 0)
+            total = si + no + abst
+            aprobado = si > no
+            resultado = "APROBADO" if aprobado else "RECHAZADO"
+
+            results_json = {
+                "si": si, "no": no, "abstencion": abst, "total": total,
+                "resultado": resultado, "aprobado": aprobado,
+            }
+
+            await session.execute(
+                sql_text(
+                    "UPDATE voting_sessions SET is_open = false, closed_at = NOW(), "
+                    "results = CAST(:r AS jsonb) WHERE id = :sid"
+                ),
+                {"r": json.dumps(results_json), "sid": session_id},
+            )
+
+            # Build historial
+            result = await session.execute(
+                sql_text(
+                    "SELECT id, description, closed_at, results FROM voting_sessions "
+                    "WHERE results IS NOT NULL ORDER BY id"
+                )
+            )
+            history = list(result.mappings())
+
+            # Recipients: all registered users
+            result = await session.execute(
+                sql_text("SELECT telegram_id FROM users WHERE onboarding_complete = true")
+            )
+            tids = [row[0] for row in result.fetchall()]
+
+        emoji = "✅" if aprobado else "❌"
+        lines = [
+            f"{emoji} *VOTACIÓN CERRADA — {resultado}*",
+            "",
+            "*Resultados finales:*",
+            f"• ✅ A favor: *{si}*",
+            f"• ❌ En contra: *{no}*",
+            f"• 🤷 Abstenciones: *{abst}*",
+            f"• Total votos: {total}",
+        ]
+        if len(history) > 1:
+            lines += ["", "*📜 Trazabilidad de votaciones:*"]
+            for i, h in enumerate(history, 1):
+                r = h["results"]
+                if isinstance(r, str):
+                    r = json.loads(r)
+                marker = "✅" if r.get("aprobado") else "❌"
+                lines.append(
+                    f"{i}. {marker} {r.get('resultado', '?')} — "
+                    f"{r.get('si', 0)}sí / {r.get('no', 0)}no / {r.get('abstencion', 0)}abs"
+                )
+        msg = "\n".join(lines)
+
+        for tid in tids:
+            await self.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(tid),
+                "text": msg,
+                "parse_mode": "Markdown",
+            })
+
+        await self.bus.publish("voting:ended", {
+            "session_id": session_id,
+            **results_json,
+        })
+
+        logger.info(f"Voting session {session_id} closed: {resultado} ({si}-{no}-{abst})")
 
     async def _timeline_loop(self):
         """Revisa TIMELINE cada 10s y dispara eventos cuyo minuto ya pasó."""

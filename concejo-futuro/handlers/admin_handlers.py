@@ -187,6 +187,41 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         })
         await agent._send_response(chat_id, f"Timer de {minutes} min iniciado.")
 
+    elif cmd == "historial_votaciones":
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text(
+                    "SELECT id, opened_at, closed_at, description, results, is_open "
+                    "FROM voting_sessions ORDER BY id"
+                )
+            )
+            rows = list(result.mappings())
+
+        if not rows:
+            await agent._send_response(chat_id, "No hay votaciones registradas.")
+            return
+
+        lines = ["*📜 Historial de votaciones*", ""]
+        for i, r in enumerate(rows, 1):
+            res = r["results"]
+            if isinstance(res, str):
+                res = json.loads(res)
+            if res:
+                marker = "✅" if res.get("aprobado") else "❌"
+                lines.append(
+                    f"{i}. {marker} *{res.get('resultado', '?')}* — "
+                    f"{res.get('si', 0)}sí / {res.get('no', 0)}no / "
+                    f"{res.get('abstencion', 0)}abs "
+                    f"(cerrada {r['closed_at'].strftime('%H:%M') if r['closed_at'] else '?'})"
+                )
+            elif r["is_open"]:
+                lines.append(f"{i}. 🟢 EN CURSO — {r['description']}")
+            else:
+                lines.append(f"{i}. ⏸️ Cerrada sin resultados — {r['description']}")
+
+        await agent._send_response(chat_id, "\n".join(lines))
+
     elif cmd == "tweet":
         from core.tweets import TIMELINE_TWEETS
         if not args.strip():

@@ -131,6 +131,7 @@ class Orchestrator(BaseAgent):
             {"command": "tweet", "description": "Tweet simulado"},
             {"command": "alerta", "description": "Alerta visual"},
             {"command": "briefing", "description": "Forzar briefing"},
+            {"command": "historial_votaciones", "description": "Historial de votaciones"},
             {"command": "llm", "description": "Cambiar proveedor LLM"},
             {"command": "pin", "description": "PIN de acceso (4 dígitos)"},
             {"command": "help", "description": "Ayuda completa"},

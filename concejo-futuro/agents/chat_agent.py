@@ -222,7 +222,7 @@ class ChatAgent(BaseAgent):
             "/broadcast", "/bomba", "/fakenews", "/presion", "/gabinete_remover",
             "/gabinete_amenaza", "/alerta", "/fase", "/ronda", "/tweet",
             "/llm", "/modo_test", "/briefing", "/pantalla",
-            "/asignar_rol", "/roles",
+            "/asignar_rol", "/roles", "/historial_votaciones",
         ):
             if user_id in settings.admin_ids:
                 from handlers.admin_handlers import handle_admin_command
