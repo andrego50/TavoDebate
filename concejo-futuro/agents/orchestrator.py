@@ -149,6 +149,7 @@ class Orchestrator(BaseAgent):
             {"command": "votar_articulo", "description": "Votar un artículo (uso: /votar_articulo N si|no|abstencion)"},
             {"command": "votacion_articulos", "description": "🎖️ Presidente: abrir votación por artículos"},
             {"command": "compilar_acuerdo", "description": "🎖️ Presidente: compilar texto final del acuerdo"},
+            {"command": "mi_feedback", "description": "🎓 Ver tu rúbrica de uso de IA"},
             {"command": "mi_certificado", "description": "Descargar certificado PDF"},
         ]
 

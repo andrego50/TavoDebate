@@ -150,6 +150,9 @@ class ChatAgent(BaseAgent):
         elif command == "/tutorial":
             from handlers.tutorial_handler import handle_tutorial
             await handle_tutorial(self, user_id, chat_id)
+        elif command == "/mi_feedback":
+            from handlers.feedback_handler import handle_mi_feedback
+            await handle_mi_feedback(self, user_id, chat_id)
         elif command == "/votacion_articulos":
             from handlers.presidencia_handler import handle_votacion_articulos
             await handle_votacion_articulos(self, user_id, chat_id)
