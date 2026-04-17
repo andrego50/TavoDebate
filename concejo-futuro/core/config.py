@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     # Security — bearer token requerido por /admin/command
     admin_api_token: str = ""
+    # Secret que Telegram envía en X-Telegram-Bot-Api-Secret-Token
+    telegram_webhook_secret: str = ""
 
     class Config:
         env_file = ".env"

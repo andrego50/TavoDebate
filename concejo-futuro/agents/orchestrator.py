@@ -249,7 +249,21 @@ class Orchestrator(BaseAgent):
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    """Recibe updates de Telegram y los enruta al Chat Agent vía Redis."""
+    """Recibe updates de Telegram y los enruta al Chat Agent vía Redis.
+
+    Si TELEGRAM_WEBHOOK_SECRET está configurado, se valida contra el
+    header `X-Telegram-Bot-Api-Secret-Token` que Telegram envía en cada
+    update. Previene que un atacante falsifique updates haciendo POST
+    directo a este endpoint.
+    """
+    expected = settings.telegram_webhook_secret or ""
+    if expected:
+        import hmac
+        received = request.headers.get("x-telegram-bot-api-secret-token", "")
+        if not hmac.compare_digest(received, expected):
+            logger.warning(f"Webhook rejected: bad/missing secret token from {request.client.host if request.client else '?'}")
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+
     update = await request.json()
     bus: RedisBus = request.app.state.bus
     await bus.stream_add("telegram:incoming", update)
