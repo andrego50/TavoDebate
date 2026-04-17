@@ -227,9 +227,10 @@ function handleEvent(channel, data) {
 // === Tweet Functions ===
 function addTweet(data) {
     const feed = document.getElementById('tweetFeed');
-    const isReply = data.is_reply || data.reply_to;
-    const isQuote = data.is_quote || false;
+    const isReply = data.is_reply || data.reply_to || data.reply_to_id;
+    const isQuote = data.is_quote || data.quote_to_id || false;
     const isConcejal = data.is_concejal || false;
+    const tweetId = data.tweet_id;
     const verified = data.verified ? '<span class="tweet-verified">✓</span>' : '';
     const avatar = data.author?.replace('@','').charAt(0) || '?';
 
@@ -246,15 +247,21 @@ function addTweet(data) {
         badge = `<span class="concejal-badge ${cls}">${data.bancada}</span>`;
     }
 
-    // Handle quote tweet: extract quoted author and show as embedded
+    // Handle quote tweet: prefer explicit quote_to_id, fall back to RT parsing
     let quotedHtml = '';
     let tweetText = data.text || '';
-    if (isQuote && tweetText.toUpperCase().startsWith('RT ')) {
-        // Parse "RT @Author Original comment" → show as quote
+    if (isQuote && data.quote_to_id) {
+        const qtAuthor = data.quote_to_author || '';
+        let origText = data.quote_to_text || '';
+        if (!origText) {
+            const orig = feed.querySelector(`.tweet[data-tweet-id="${data.quote_to_id}"]`);
+            origText = orig?.querySelector('.tweet-text')?.textContent?.substring(0, 120) || '';
+        }
+        quotedHtml = `<div class="quoted-tweet"><span class="qt-author">${qtAuthor} · #${data.quote_to_id}</span><br>${origText || '...'}</div>`;
+    } else if (isQuote && tweetText.toUpperCase().startsWith('RT ')) {
         const rtMatch = tweetText.match(/^RT\s+(@\w+)\s+(.*)/i);
         if (rtMatch) {
             const qtAuthor = rtMatch[1];
-            // Find original tweet in feed
             const origTweets = feed.querySelectorAll('.tweet');
             let origText = '';
             for (const tw of origTweets) {
@@ -266,9 +273,12 @@ function addTweet(data) {
         }
     }
 
-    // Handle reply: highlight the @mention
+    // Handle reply: prefer reply_to_id header, fall back to @mention parsing
     let replyHeader = '';
-    if (isReply && tweetText.startsWith('@')) {
+    if (isReply && data.reply_to_id) {
+        const replyAuthor = data.reply_to_author || '';
+        replyHeader = `<div style="color:#71767b;font-size:12px;margin-bottom:4px">Respondiendo a ${replyAuthor} · #${data.reply_to_id}</div>`;
+    } else if (isReply && tweetText.startsWith('@')) {
         const mentionMatch = tweetText.match(/^(@\w+)\s/);
         if (mentionMatch) {
             replyHeader = `<div style="color:#71767b;font-size:12px;margin-bottom:4px">Respondiendo a ${mentionMatch[1]}</div>`;
@@ -280,12 +290,14 @@ function addTweet(data) {
 
     const el = document.createElement('div');
     el.className = `tweet ${isReply ? 'reply' : ''} ${isQuote ? 'quote' : ''}`;
+    if (tweetId) el.setAttribute('data-tweet-id', tweetId);
+    const idBadge = tweetId ? `<span class="tweet-handle">#${tweetId}</span>` : '';
     el.innerHTML = `
         <div class="tweet-header">
             <div class="tweet-avatar">${avatar}</div>
             <div>
                 <span class="tweet-name">${data.author || 'Anon'}</span> ${verified} ${badge}
-                ${subtitle}
+                ${subtitle} ${idBadge}
             </div>
         </div>
         ${replyHeader}

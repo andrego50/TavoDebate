@@ -418,6 +418,26 @@ class ChatAgent(BaseAgent):
                 f"Escribe tu pregunta o usa /asesores para ver el panel completo.",
                 reply_markup=bar,
             )
+        elif data.startswith(("tweet_reply_", "tweet_quote_")):
+            mode = "reply" if data.startswith("tweet_reply_") else "quote"
+            try:
+                tid = int(data.rsplit("_", 1)[1])
+            except ValueError:
+                return
+            recent = await self._get_recent_tweets(30)
+            target = next((t for t in recent if t.get("tweet_id") == tid), None)
+            if not target:
+                await self._send_response(chat_id, "Ese tuit ya no está disponible. Usa /tuitear para ver los actuales.")
+                return
+            await self._save_tweet_context(user_id, mode, target)
+            verb = "respondiendo" if mode == "reply" else "citando"
+            preview = (target.get("text", "") or "")[:100]
+            await self._send_response(
+                chat_id,
+                f"🐦 Estás {verb} a *{target.get('author', '?')}*:\n"
+                f"_{preview}…_\n\n"
+                f"Escribe `/tuitear <tu texto>` para publicar. Tienes 5 min."
+            )
         elif data.startswith("assign_role_"):
             if user_id in settings.admin_ids:
                 rol_key = data.replace("assign_role_", "")
@@ -487,24 +507,13 @@ class ChatAgent(BaseAgent):
         return None
 
     async def _handle_tuitear(self, user_id: int, chat_id: int, text: str):
-        """Permite a cualquier concejal publicar un tweet en la pantalla.
-
-        Formatos:
-        - /tuitear Esto es mi opinión sobre el SIADR
-        - /tuitear RT @JuanPerez Estoy de acuerdo con esto
-        - /tuitear @MariaLopez No estoy de acuerdo, los datos son viejos
-        """
+        """Permite a cualquier concejal publicar un tweet en la pantalla."""
+        # Sin texto: mostrar menú con tuits recientes para citar/responder
         if not text.strip():
-            await self._send_response(
-                chat_id,
-                "🐦 *¿Qué quieres tuitear?*\n\n"
-                "Escribe: `/tuitear Tu opinión aquí`\n"
-                "Citar: `/tuitear RT @usuario Comentario`\n"
-                "Responder: `/tuitear @usuario Tu respuesta`"
-            )
+            await self._show_tuitear_menu(chat_id)
             return
 
-        # Get user info for the tweet author handle
+        # Get user info
         async with get_session() as session:
             from sqlalchemy import text as sql_text
             result = await session.execute(
@@ -517,30 +526,134 @@ class ChatAgent(BaseAgent):
             await self._send_response(chat_id, "Debes registrarte primero con /start")
             return
 
-        # Build author handle from name: "Juan Pérez" -> "@JuanPerez"
-        nombre = user["nombre_completo"]
-        handle = "@" + "".join(w.capitalize() for w in nombre.split()[:2])
+        handle = "@" + "".join(w.capitalize() for w in user["nombre_completo"].split()[:2])
         municipio = user["municipio"]
         bancada = user["bancada_nombre"]
-
         tweet_text = text.strip()
 
-        # Detect quote tweet (RT @someone ...)
-        is_quote = tweet_text.upper().startswith("RT ")
-        # Detect reply (@someone ...)
-        is_reply = tweet_text.startswith("@") and not is_quote
+        # Check pending reply/quote context
+        ctx = await self._load_tweet_context(user_id)
 
-        await self.bus.publish("tweet:new", {
+        payload = {
             "author": handle,
             "text": tweet_text,
             "municipio": municipio,
             "bancada": bancada,
-            "is_quote": is_quote,
-            "is_reply": is_reply,
             "is_concejal": True,
-        })
+            "is_quote": False,
+            "is_reply": False,
+        }
+        if ctx:
+            if ctx["mode"] == "reply":
+                payload["is_reply"] = True
+                payload["reply_to_id"] = ctx["target_id"]
+                payload["reply_to_author"] = ctx["target_author"]
+            elif ctx["mode"] == "quote":
+                payload["is_quote"] = True
+                payload["quote_to_id"] = ctx["target_id"]
+                payload["quote_to_author"] = ctx["target_author"]
+                payload["quote_to_text"] = ctx.get("target_text", "")
+        else:
+            # Legacy formats still supported
+            payload["is_quote"] = tweet_text.upper().startswith("RT ")
+            payload["is_reply"] = tweet_text.startswith("@") and not payload["is_quote"]
 
-        await self._send_response(chat_id, f"🐦 Tu tweet fue publicado en la pantalla:\n\n*{handle}*: {tweet_text[:200]}")
+        await self._publish_tweet(payload)
+
+        suffix = ""
+        if ctx:
+            suffix = f" (en {'respuesta a' if ctx['mode'] == 'reply' else 'cita a'} {ctx['target_author']})"
+        await self._send_response(
+            chat_id,
+            f"🐦 Tu tweet fue publicado en la pantalla{suffix}:\n\n*{handle}*: {tweet_text[:200]}"
+        )
+
+    async def _publish_tweet(self, payload: dict) -> int:
+        """Asigna tweet_id incremental y persiste en Redis para permitir citas/respuestas."""
+        tweet_id = await self.bus.raw.incr("tavodebate:tweet_counter")
+        payload["tweet_id"] = int(tweet_id)
+        # Persist for future lookups (last 30)
+        await self.bus.raw.lpush(
+            "tavodebate:recent_tweets", json.dumps(payload)
+        )
+        await self.bus.raw.ltrim("tavodebate:recent_tweets", 0, 29)
+        await self.bus.publish("tweet:new", payload)
+        return int(tweet_id)
+
+    async def _save_tweet_context(self, user_id: int, mode: str, target: dict):
+        """Guarda el contexto de respuesta/cita pendiente del usuario (TTL 5 min)."""
+        await self.bus.raw.setex(
+            f"tweet_ctx:{user_id}",
+            300,
+            json.dumps({
+                "mode": mode,
+                "target_id": target["tweet_id"],
+                "target_author": target["author"],
+                "target_text": target.get("text", "")[:200],
+            }),
+        )
+
+    async def _load_tweet_context(self, user_id: int) -> dict | None:
+        """Lee y limpia el contexto pendiente de tuit."""
+        raw = await self.bus.raw.get(f"tweet_ctx:{user_id}")
+        if not raw:
+            return None
+        await self.bus.raw.delete(f"tweet_ctx:{user_id}")
+        if isinstance(raw, bytes):
+            raw = raw.decode()
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
+    async def _get_recent_tweets(self, limit: int = 8) -> list[dict]:
+        """Devuelve los tuits recientes desde Redis."""
+        raw_list = await self.bus.raw.lrange("tavodebate:recent_tweets", 0, limit - 1)
+        tweets = []
+        for raw in raw_list:
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            try:
+                tweets.append(json.loads(raw))
+            except Exception:
+                continue
+        return tweets
+
+    async def _show_tuitear_menu(self, chat_id: int):
+        """Muestra tuits recientes con botones para responder o citar."""
+        recent = await self._get_recent_tweets(8)
+        if not recent:
+            await self._send_response(
+                chat_id,
+                "🐦 *¿Qué quieres tuitear?*\n\n"
+                "Todavía no hay tuits en la pantalla para citar. "
+                "Escribe: `/tuitear Tu opinión aquí`"
+            )
+            return
+
+        keyboard = []
+        text_lines = ["🐦 *Últimos tuits en pantalla:*", ""]
+        for i, tw in enumerate(recent, 1):
+            tid = tw.get("tweet_id")
+            if not tid:
+                continue
+            snippet = (tw.get("text", "") or "")[:70].replace("\n", " ")
+            text_lines.append(f"*{i}.* {tw.get('author', '?')}: {snippet}…")
+            keyboard.append([
+                {"text": f"💬 Responder #{tid}", "callback_data": f"tweet_reply_{tid}"},
+                {"text": f"🔄 Citar #{tid}", "callback_data": f"tweet_quote_{tid}"},
+            ])
+        text_lines += [
+            "",
+            "Elige un tuit para *responder* o *citar*, o envía `/tuitear <tu texto>` para un tuit nuevo."
+        ]
+
+        await self.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": "\n".join(text_lines),
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+        })
 
     async def _get_active_advisor(self, telegram_id: int) -> str:
         """Obtiene el asesor activo del usuario desde Redis."""

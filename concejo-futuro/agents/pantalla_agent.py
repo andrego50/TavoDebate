@@ -117,6 +117,19 @@ class PantallaAgent(BaseAgent):
                     await self._handle_command(data)
                     continue
 
+                # Assign an ID to every tweet that doesn't have one yet and
+                # keep a rolling list of the last 30 so they can be cited.
+                if channel == "tweet:new" and not data.get("tweet_id"):
+                    try:
+                        tid = await self.bus.redis.incr("tavodebate:tweet_counter")
+                        data["tweet_id"] = int(tid)
+                        await self.bus.redis.lpush(
+                            "tavodebate:recent_tweets", json.dumps(data)
+                        )
+                        await self.bus.redis.ltrim("tavodebate:recent_tweets", 0, 29)
+                    except Exception as e:
+                        logger.error(f"Failed to assign tweet_id: {e}")
+
                 event = {"channel": channel, "data": data}
 
                 # Persist important events
