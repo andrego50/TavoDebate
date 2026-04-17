@@ -129,7 +129,6 @@ class Orchestrator(BaseAgent):
             {"command": "presion", "description": "Presión política"},
             {"command": "ronda", "description": "Iniciar timer (minutos)"},
             {"command": "tweet", "description": "Tweet simulado"},
-            {"command": "alerta", "description": "Alerta visual"},
             {"command": "briefing", "description": "Forzar briefing"},
             {"command": "historial_votaciones", "description": "Historial de votaciones"},
             {"command": "llm", "description": "Cambiar proveedor LLM"},

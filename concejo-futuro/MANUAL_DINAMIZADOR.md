@@ -319,8 +319,6 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
 | `/ronda <min>` | Timer de N minutos en pantalla |
 | `/broadcast <msg>` | Mensaje manual a todos los concejales |
 | `/broadcast` (sin texto) | **Genera borrador contextual** con LLM → preview con botones ✅ Aprobar / 🔄 Regenerar / ❌ Cancelar |
-| `/alerta <msg>` | Alerta manual al geodashboard |
-| `/alerta` (sin texto) | **Genera borrador de alerta contextual** → preview con botones |
 | `/bomba <N>` | Bomba informativa #N |
 | `/fakenews <N>` | Fake news #N |
 | `/presion <msg>` | Presión política simulada |

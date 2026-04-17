@@ -55,16 +55,8 @@ async def _build_context_snapshot() -> str:
 
 
 async def _generate_draft(agent, kind: str, context: str) -> str:
-    """Genera un borrador contextual (broadcast/alerta/presion) con el LLM."""
-    if kind == "alerta":
-        system = (
-            "Eres el dinamizador del Concejo del Futuro. Redacta una ALERTA "
-            "institucional breve (máx 50 palabras) basada en el contexto. Tono: "
-            "Defensoría del Pueblo / Personería — formal, urgente, interpelativo. "
-            "Sin saludos ni firma. No inventes datos que no estén en el contexto."
-        )
-        user = f"Contexto del debate:\n{context}\n\nRedacta la alerta."
-    elif kind == "presion":
+    """Genera un borrador contextual (broadcast/presion) con el LLM."""
+    if kind == "presion":
         system = (
             "Eres el dinamizador del Concejo del Futuro. Redacta una PRESIÓN "
             "política breve (máx 60 palabras) que un actor externo (gremio, "
@@ -127,7 +119,7 @@ async def _show_draft_preview(agent, chat_id: int, user_id: int, kind: str):
 
     await _store_draft(user_id, kind, draft)
 
-    icon = {"alerta": "🚨", "presion": "📣"}.get(kind, "📢")
+    icon = {"presion": "📣"}.get(kind, "📢")
     keyboard = json.dumps({"inline_keyboard": [
         [
             {"text": "✅ Aprobar y enviar", "callback_data": f"send_draft_{kind}"},
@@ -304,16 +296,6 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
             },
         })
         await agent._send_response(chat_id, f"Amenaza de gabinete enviada a bancada {bancada_id}.")
-
-    elif cmd == "alerta":
-        if not args.strip():
-            await _show_draft_preview(agent, chat_id, chat_id, "alerta")
-            return
-        await agent.bus.publish("control:command", {
-            "action": "alert",
-            "args": {"alert_type": "defensoria", "message": args},
-        })
-        await agent._send_response(chat_id, "Alerta enviada.")
 
     elif cmd == "fase":
         if not args.strip():
@@ -659,7 +641,7 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
         await agent._send_response(chat_id, f"📰 Fake news #{news_id} enviada a todos los concejales + pantalla.")
         return
 
-    if data in ("send_draft_broadcast", "send_draft_alerta", "send_draft_presion"):
+    if data in ("send_draft_broadcast", "send_draft_presion"):
         kind = data.rsplit("_", 1)[1]
         draft = await _load_draft(chat_id, kind)
         if not draft:
@@ -671,12 +653,6 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
                 "args": {"message": draft, "target": "all"},
             })
             await agent._send_response(chat_id, "📢 Broadcast enviado.")
-        elif kind == "alerta":
-            await agent.bus.publish("control:command", {
-                "action": "alert",
-                "args": {"alert_type": "defensoria", "message": draft},
-            })
-            await agent._send_response(chat_id, "🚨 Alerta enviada.")
         elif kind == "presion":
             await agent.bus.publish("control:command", {
                 "action": "pressure",
@@ -688,7 +664,7 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
             await agent._send_response(chat_id, "📣 Presión política enviada.")
         return
 
-    if data in ("regen_draft_broadcast", "regen_draft_alerta", "regen_draft_presion"):
+    if data in ("regen_draft_broadcast", "regen_draft_presion"):
         kind = data.rsplit("_", 1)[1]
         await _show_draft_preview(agent, chat_id, chat_id, kind)
         return

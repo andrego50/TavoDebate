@@ -220,7 +220,7 @@ class ChatAgent(BaseAgent):
         # Admin commands
         elif command in (
             "/broadcast", "/bomba", "/fakenews", "/presion", "/gabinete_remover",
-            "/gabinete_amenaza", "/alerta", "/fase", "/ronda", "/tweet",
+            "/gabinete_amenaza", "/fase", "/ronda", "/tweet",
             "/llm", "/modo_test", "/briefing", "/pantalla",
             "/asignar_rol", "/roles", "/historial_votaciones",
         ):
