@@ -114,6 +114,38 @@ class RedisBus:
 
     # --- Rate limiting ---
 
+    # --- Role slot semaphore (atomic claim/release) ---
+
+    async def claim_role_slot(self, rol_key: str, max_titulares: int) -> bool:
+        """Reserva atómicamente un cupo para `rol_key`. Devuelve True si
+        lo consiguió, False si ya estaba lleno. Si rechaza, decrementa
+        para dejar el contador exacto."""
+        key = f"role_slot:{rol_key}"
+        current = await self.redis.incr(key)
+        if current > max_titulares:
+            await self.redis.decr(key)
+            return False
+        return True
+
+    async def release_role_slot(self, rol_key: str):
+        """Libera un cupo (cuando un usuario cambia de rol). El contador
+        no baja de 0."""
+        key = f"role_slot:{rol_key}"
+        current = await self.redis.get(key)
+        try:
+            if current is not None and int(current) > 0:
+                await self.redis.decr(key)
+        except (TypeError, ValueError):
+            pass
+
+    async def reset_role_slots(self, actual_counts: dict[str, int]):
+        """Reinicia los contadores con los valores reales de la DB.
+        Se llama al arrancar el orchestrator para mantener la consistencia
+        entre reinicios o cambios de rol vía /asignar_rol."""
+        for rol_key, count in actual_counts.items():
+            key = f"role_slot:{rol_key}"
+            await self.redis.set(key, int(count))
+
     async def check_rate_limit(
         self, user_id: int, max_per_min: int = 20
     ) -> bool:

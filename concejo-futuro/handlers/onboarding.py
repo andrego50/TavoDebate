@@ -343,23 +343,24 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
         if rol_key not in ROLES:
             return
 
-        # Enforce max_titulares (excluding this user if they already had
-        # this role — idempotent re-selection is fine)
+        # Verifica si el usuario ya tenía un rol asignado (para liberar
+        # su cupo anterior si cambia) y si ya ocupaba el mismo rol
+        # (re-selección idempotente).
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("SELECT rol FROM users WHERE telegram_id = :tid"),
+                {"tid": user_id},
+            )
+            rol_previo = result.scalar()
+
         max_titulares = ROLES[rol_key].get("max_titulares")
-        if max_titulares is not None:
-            async with get_session() as session:
-                from sqlalchemy import text as sql_text
-                result = await session.execute(
-                    sql_text(
-                        "SELECT COUNT(*) FROM users WHERE rol = :rol "
-                        "AND onboarding_complete = true "
-                        "AND telegram_id != :tid"
-                    ),
-                    {"rol": rol_key, "tid": user_id},
-                )
-                ocupados = result.scalar() or 0
-            if ocupados >= max_titulares:
-                # Re-show the role menu for this group, marking cupos llenos
+        # Atomic claim del cupo en Redis (solo si el rol tiene límite y
+        # es un cambio real). INCR en Redis es atómico — dos usuarios
+        # simultáneos NUNCA obtienen el mismo número.
+        if max_titulares is not None and rol_previo != rol_key:
+            claimed = await agent.bus.claim_role_slot(rol_key, max_titulares)
+            if not claimed:
                 rol_info = ROLES[rol_key]
                 grupo_key = rol_info.get("grupo")
                 grupo = next(
@@ -368,12 +369,19 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
                 )
                 await agent._send_response(
                     chat_id,
-                    f"⚠️ El cupo de *{rol_info['nombre']}* está lleno "
-                    f"(máx {max_titulares}). Elige otro rol del grupo."
+                    f"⚠️ El cupo de *{rol_info['nombre']}* se acaba de "
+                    f"llenar (máx {max_titulares}). Elige otro rol."
                 )
                 if grupo:
                     await _show_roles_menu(agent, user_id, chat_id, grupo)
                 return
+
+        # Libera el cupo del rol anterior si era un rol con cupo
+        if (rol_previo
+                and rol_previo != rol_key
+                and rol_previo in ROLES
+                and ROLES[rol_previo].get("max_titulares") is not None):
+            await agent.bus.release_role_slot(rol_previo)
 
         async with get_session() as session:
             from sqlalchemy import text as sql_text

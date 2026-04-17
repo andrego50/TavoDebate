@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from agents.base_agent import BaseAgent
 from core.config import settings
 from core.redis_bus import RedisBus
-from db.database import init_db, close_db
+from db.database import init_db, close_db, get_session
 
 logger = logging.getLogger("orchestrator")
 
@@ -42,6 +42,10 @@ class Orchestrator(BaseAgent):
         asyncio.create_task(self._health_check_loop())
         asyncio.create_task(self._outgoing_message_loop())
         asyncio.create_task(self._backup_loop())
+        # Sync role-slot counters with the actual state in the DB at
+        # startup (so Redis stays consistent across restarts and manual
+        # /asignar_rol changes).
+        asyncio.create_task(self._sync_role_slots())
 
         # Run FastAPI
         config = uvicorn.Config(
@@ -56,6 +60,32 @@ class Orchestrator(BaseAgent):
     async def shutdown(self):
         await close_db()
         await super().shutdown()
+
+    async def _sync_role_slots(self):
+        """Lee la DB y reinicia los contadores Redis de cupos de rol.
+        Se ejecuta una vez al arrancar; así un /asignar_rol manual o un
+        reinicio del pod no deja los contadores desfasados."""
+        try:
+            from sqlalchemy import text as sql_text
+            from core.config import ROLES
+            limited = {
+                k: v["max_titulares"] for k, v in ROLES.items()
+                if v.get("max_titulares") is not None
+            }
+            if not limited:
+                return
+            async with get_session() as session:
+                result = await session.execute(sql_text(
+                    "SELECT rol, COUNT(*) FROM users "
+                    "WHERE onboarding_complete = true AND rol IS NOT NULL "
+                    "GROUP BY rol"
+                ))
+                counts = {row[0]: row[1] for row in result.fetchall()}
+            actual = {k: counts.get(k, 0) for k in limited}
+            await self.bus.reset_role_slots(actual)
+            logger.info(f"Role slots synced from DB: {actual}")
+        except Exception as e:
+            logger.error(f"Role-slot sync failed: {e}", exc_info=True)
 
     async def handle_admin_command(self, command: str, args: dict):
         """Enruta comandos admin al agente correcto."""
