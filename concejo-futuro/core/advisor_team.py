@@ -121,8 +121,11 @@ SYNTHESIS_SYSTEM = (
 
 
 async def _query_single_advisor(llm, base_system: str, advisor_key: str,
-                                 question: str, voice: str) -> tuple[str, str]:
+                                 safe_question: str, voice: str) -> tuple[str, str]:
     """Llama al LLM con el system-prompt del asesor especificado.
+
+    `safe_question` debe venir ya envuelto en <user_input>…</user_input>
+    por el caller; esta función NO hace el wrapping.
 
     Devuelve (advisor_key, respuesta). Maneja <<<BUSCAR>>> si el asesor
     la pide.
@@ -139,7 +142,7 @@ async def _query_single_advisor(llm, base_system: str, advisor_key: str,
 
     try:
         response = await llm.generate(
-            specialized_system, question,
+            specialized_system, safe_question,
             cache_voice=cache_voice, max_tokens=500,
         )
     except Exception as e:
@@ -154,7 +157,7 @@ async def _query_single_advisor(llm, base_system: str, advisor_key: str,
             query = match.group(1).strip()
             results = await search_web(query, max_results=3)
             augmented = (
-                f"{question}\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n"
+                f"{safe_question}\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n"
                 f"{results}\n\nUsa estos resultados y RESPONDE con tu formato."
             )
             response = await llm.generate(
@@ -174,13 +177,22 @@ async def consult_team(llm, base_system: str, question: str,
                         voice: str) -> str:
     """Consulta a los asesores relevantes y devuelve la respuesta
     consolidada lista para enviar al usuario.
+
+    `question` llega como texto CRUDO (sin envolvente). El triage por
+    keywords se hace sobre el crudo; el envolvente <user_input> se
+    aplica justo antes de pasarlo al LLM, tanto en el fan-out como en
+    la síntesis, como defensa contra prompt injection.
     """
+    from core.input_guard import wrap_user_input
+
     relevant = pick_relevant_advisors(question, max_advisors=3)
     logger.info(f"Equipo: consultando {relevant} para '{question[:60]}'")
 
-    # Parallel fan-out
+    safe_question = wrap_user_input(question)
+
+    # Parallel fan-out — cada asesor recibe el texto ya envuelto
     tasks = [
-        _query_single_advisor(llm, base_system, key, question, voice)
+        _query_single_advisor(llm, base_system, key, safe_question, voice)
         for key in relevant
     ]
     results = await asyncio.gather(*tasks, return_exceptions=False)
@@ -196,9 +208,9 @@ async def consult_team(llm, base_system: str, question: str,
 
     advisors_block = "\n\n".join(sections)
 
-    # Final synthesis
+    # Final synthesis — la pregunta del participante se vuelve a envolver
     synthesis_user = (
-        f"Pregunta del participante:\n{question}\n\n"
+        f"Pregunta del participante:\n{safe_question}\n\n"
         f"Respuestas de sus asesores:\n\n"
         + "\n\n---\n\n".join(raw_compendium)
         + "\n\nCompila la recomendación ejecutiva del gabinete "

@@ -290,11 +290,13 @@ class ChatAgent(BaseAgent):
             voice = user.get("active_voice", "asesor_neutral")
 
             from core.advisors import TEAM_KEY
+            from core.input_guard import wrap_user_input
 
             if advisor_key == TEAM_KEY:
-                # Team mode (orquestador): consulta paralela + síntesis
+                # Team mode (orquestador): consulta paralela + síntesis.
+                # consult_team hace el wrapping internamente después del
+                # triage por keywords (que necesita texto crudo).
                 from core.advisor_team import consult_team
-                # Base system prompt without a specific advisor section
                 base_system = await build_system_prompt(user, session, advisor_key=None)
                 await self._send_response(
                     chat_id, "🧠 Tavo está coordinando a tu equipo..."
@@ -303,11 +305,14 @@ class ChatAgent(BaseAgent):
                     self.llm, base_system, text, voice,
                 )
             else:
+                # Blindaje contra prompt injection: el texto humano se
+                # entrega al LLM SIEMPRE dentro de <user_input>…</user_input>.
+                safe_text = wrap_user_input(text)
                 system_prompt = await build_system_prompt(
                     user, session, advisor_key=advisor_key
                 )
                 response = await self.llm.generate(
-                    system_prompt, text, cache_voice=f"{voice}_{advisor_key}"
+                    system_prompt, safe_text, cache_voice=f"{voice}_{advisor_key}"
                 )
 
                 # Handle web search if LLM requested one (single-advisor path)
@@ -318,7 +323,7 @@ class ChatAgent(BaseAgent):
                     from core.web_search import search_web
                     search_results = await search_web(query)
                     augmented = (
-                        f"{text}\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{search_results}\n\n"
+                        f"{safe_text}\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{search_results}\n\n"
                         "Usa estos resultados para complementar tu respuesta al participante."
                     )
                     response = await self.llm.generate(
