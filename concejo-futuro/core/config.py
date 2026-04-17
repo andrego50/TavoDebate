@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     agent_type: str = "orchestrator"
     instance_id: str = ""
 
+    # Security — bearer token requerido por /admin/command
+    admin_api_token: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

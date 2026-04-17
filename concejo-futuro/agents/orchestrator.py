@@ -268,7 +268,26 @@ async def health_check(request: Request):
 
 @app.post("/admin/command")
 async def admin_command(request: Request):
-    """Endpoint para comandos admin desde el dashboard."""
+    """Endpoint para comandos admin desde el dashboard.
+
+    Protegido con bearer token. Configura ADMIN_API_TOKEN en .env y
+    envía el header `Authorization: Bearer <token>`.
+    """
+    expected = settings.admin_api_token or ""
+    if not expected:
+        # Fail closed: si no hay token configurado, rechaza todo para que
+        # nadie pueda llegar aquí sin autenticación.
+        return JSONResponse({"error": "admin api not configured"}, status_code=503)
+
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return JSONResponse({"error": "missing bearer token"}, status_code=401)
+
+    import hmac
+    provided = header.split(" ", 1)[1].strip()
+    if not hmac.compare_digest(provided, expected):
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+
     body = await request.json()
     orch: Orchestrator = request.app.state.orchestrator
     success = await orch.handle_admin_command(body["command"], body.get("args", {}))

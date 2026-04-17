@@ -1,6 +1,7 @@
 """TavoDebate - Dashboard Streamlit (5 pestañas para el facilitador)."""
 
 import json
+import os
 import time
 from datetime import datetime
 
@@ -50,10 +51,15 @@ def execute_db(sql, params=None):
 
 
 def send_command(command: str, args: dict = None):
+    token = os.environ.get("ADMIN_API_TOKEN", "")
+    if not token:
+        st.error("ADMIN_API_TOKEN no configurado en el entorno del dashboard.")
+        return
     try:
         httpx.post(
             f"{ORCHESTRATOR_URL}/admin/command",
             json={"command": command, "args": args or {}},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=5,
         )
     except Exception as e:
