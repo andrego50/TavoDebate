@@ -9,6 +9,125 @@ from db.database import get_session
 
 logger = logging.getLogger("handlers.ponencia")
 
+# Entrevista guiada para el alcalde proponente del SIADR.
+# Cada paso es una pregunta; las respuestas se acumulan y alimentan
+# el prompt final. Ocho preguntas → ponencia compuesta.
+ALCALDE_INTERVIEW = [
+    {
+        "key": "problema",
+        "q": (
+            "1/8 — *Apertura.*\n\n"
+            "¿Cuál es el problema principal que buscas resolver con el SIADR en tu "
+            "municipio? Menciona un dato o anécdota concreta (una vereda, una cifra) "
+            "que vas a poner sobre la mesa primero."
+        ),
+    },
+    {
+        "key": "dato_contundente",
+        "q": (
+            "2/8 — *Dato contundente.*\n\n"
+            "¿Qué cifra o comparación vas a usar para que el Concejo no pueda "
+            "ignorar la urgencia? (Ej: «68% de veredas sin internet», «solo 2 "
+            "agrónomos para 116 municipios», etc.)"
+        ),
+    },
+    {
+        "key": "pilotos",
+        "q": (
+            "3/8 — *Priorización.*\n\n"
+            "¿Cuáles son los 2-3 municipios piloto que defenderás primero y por "
+            "qué esos específicamente? Explica el criterio (densidad, pobreza, "
+            "conectividad, gobernabilidad)."
+        ),
+    },
+    {
+        "key": "transparencia",
+        "q": (
+            "4/8 — *Blindaje ético.*\n\n"
+            "Sabes que te van a cuestionar porque el consultor del estudio es el "
+            "mismo que ejecutaría. ¿Cómo respondes? ¿Qué garantía específica "
+            "ofreces (auditoría, separación consultor-ejecutor, veeduría)?"
+        ),
+    },
+    {
+        "key": "consulta",
+        "q": (
+            "5/8 — *Consulta previa.*\n\n"
+            "Los $1.200M de regalías vencen en junio 2026. Si la oposición exige "
+            "consulta previa presencial en los 116 municipios, tu proyecto se "
+            "retrasa 6 meses. ¿Qué alternativa propones para cumplir con la "
+            "participación sin perder las regalías?"
+        ),
+    },
+    {
+        "key": "concesiones",
+        "q": (
+            "6/8 — *Negociación.*\n\n"
+            "¿Qué 2 concesiones concretas estás dispuesto a aceptar desde el "
+            "arranque para neutralizar a la oposición? (Ej: cláusula de reversión, "
+            "mínimo % para agro, extensionistas por provincia)"
+        ),
+    },
+    {
+        "key": "crisis",
+        "q": (
+            "7/8 — *Manejo de crisis.*\n\n"
+            "Si en medio del debate aparece una noticia que menciona escándalos "
+            "históricos de alumbrado (Bucaramanga, Barranquilla), Centros "
+            "Poblados o Agro Ingreso Seguro, ¿cómo vas a diferenciar tu "
+            "proyecto sin sonar a la defensiva?"
+        ),
+    },
+    {
+        "key": "cierre",
+        "q": (
+            "8/8 — *Cierre.*\n\n"
+            "¿Con qué frase o llamado quieres terminar la ponencia? ¿Tono "
+            "conciliador («trabajemos juntos») o desafiante («el costo de no "
+            "actuar es mayor»)? Dame la frase exacta si la tienes."
+        ),
+    },
+]
+
+
+ALCALDE_COMPILE_SYSTEM = (
+    "Eres el redactor institucional del Alcalde proponente del proyecto "
+    "SIADR en Cundinamarca. Tu tarea es componer la ponencia de apertura ante "
+    "el Concejo del Futuro usando EXCLUSIVAMENTE las respuestas que el alcalde "
+    "ha dado durante la entrevista preparatoria. No inventes cifras ni "
+    "municipios distintos a los mencionados. Si una respuesta fue vaga, "
+    "mantén la vaguedad, no la rellenes. Tono: formal pero cercano, propio de "
+    "un alcalde colombiano que domina su territorio. Extensión: 500-700 "
+    "palabras en 7 bloques numerados (Apertura, Diagnóstico, Propuesta, "
+    "Blindaje ético, Consulta ciudadana, Concesiones, Cierre)."
+)
+
+
+async def _interview_key(user_id: int) -> str:
+    return f"ponencia_interview:{user_id}"
+
+
+async def _load_interview(agent, user_id: int) -> dict | None:
+    raw = await agent.bus.raw.get(await _interview_key(user_id))
+    if not raw:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+async def _save_interview(agent, user_id: int, data: dict):
+    await agent.bus.raw.setex(
+        await _interview_key(user_id), 1800, json.dumps(data)
+    )
+
+
+async def _clear_interview(agent, user_id: int):
+    await agent.bus.raw.delete(await _interview_key(user_id))
+
 # Prompt por bancada — NUNCA mezcla información de otras bancadas
 PONENCIA_PROMPTS = {
     1: (  # Gobierno - A FAVOR
@@ -150,7 +269,12 @@ Incluye el nombre del municipio del concejal en al menos 2 puntos."""
 
 
 async def handle_preparar_ponencia(agent, user_id: int, chat_id: int, ideas: str):
-    """Genera ponencia personalizada con silos por bancada."""
+    """Genera ponencia personalizada con silos por bancada.
+
+    Si el rol del usuario es 'alcalde', arranca la entrevista guiada (8
+    preguntas) que compone la ponencia larga de apertura. El resto de
+    participantes recibe la ponencia corta de 5 puntos basada en su bancada.
+    """
     async with get_session() as session:
         from sqlalchemy import text as sql_text
 
@@ -164,6 +288,11 @@ async def handle_preparar_ponencia(agent, user_id: int, chat_id: int, ideas: str
             await agent._send_response(
                 chat_id, "Primero debes registrarte. Usa /start"
             )
+            return
+
+        rol = user.get("rol") or "concejal"
+        if rol == "alcalde":
+            await _start_alcalde_interview(agent, user_id, chat_id, user)
             return
 
         bancada_id = user.get("bancada_id", 1)
@@ -247,3 +376,118 @@ async def handle_preparar_ponencia(agent, user_id: int, chat_id: int, ideas: str
                 "r": response[:2000],
             },
         )
+
+
+async def _start_alcalde_interview(agent, user_id: int, chat_id: int, user: dict):
+    """Inicia la entrevista de 8 preguntas para el alcalde proponente."""
+    state = {"step": 0, "answers": {}, "nombre": user.get("nombre_completo", "Alcalde")}
+    await _save_interview(agent, user_id, state)
+
+    intro = (
+        f"🏛️ *Preparación de la ponencia — Alcalde {state['nombre']}*\n\n"
+        "Te voy a hacer 8 preguntas para armar la ponencia de apertura del "
+        "proyecto SIADR ante el Concejo. Responde cada una como un mensaje "
+        "normal.\n\n"
+        "Comandos en cualquier momento:\n"
+        "• `/saltar` — dejar la pregunta en blanco\n"
+        "• `/cancelar` — abortar la entrevista\n\n"
+        "Cuando termines, compilo la ponencia final con tus respuestas."
+    )
+    await agent._send_response(chat_id, intro)
+    await agent._send_response(chat_id, ALCALDE_INTERVIEW[0]["q"])
+
+
+async def handle_alcalde_interview_reply(agent, user_id: int, chat_id: int, text: str) -> bool:
+    """Procesa una respuesta del alcalde durante la entrevista.
+
+    Devuelve True si consumió el mensaje (había entrevista activa), False
+    en caso contrario.
+    """
+    state = await _load_interview(agent, user_id)
+    if not state:
+        return False
+
+    if text.strip().lower() in ("/cancelar", "cancelar"):
+        await _clear_interview(agent, user_id)
+        await agent._send_response(chat_id, "Entrevista cancelada.")
+        return True
+
+    step = state.get("step", 0)
+    questions = ALCALDE_INTERVIEW
+    if step >= len(questions):
+        await _clear_interview(agent, user_id)
+        return False
+
+    current_key = questions[step]["key"]
+    if text.strip().lower() in ("/saltar", "saltar"):
+        state["answers"][current_key] = ""
+    else:
+        state["answers"][current_key] = text.strip()
+
+    step += 1
+    state["step"] = step
+
+    if step < len(questions):
+        await _save_interview(agent, user_id, state)
+        await agent._send_response(chat_id, questions[step]["q"])
+        return True
+
+    # All questions answered → compile ponencia
+    await _clear_interview(agent, user_id)
+    await agent._send_response(
+        chat_id, "✅ Gracias. Compilando tu ponencia final... (15-30s)"
+    )
+
+    async with get_session() as session:
+        from sqlalchemy import text as sql_text
+        result = await session.execute(
+            sql_text("SELECT * FROM users WHERE telegram_id = :tid"),
+            {"tid": user_id},
+        )
+        user = result.mappings().first()
+
+    answers_block = "\n\n".join(
+        f"**{q['key'].upper()}** — {q['q'].splitlines()[0]}\n"
+        f"Respuesta: {state['answers'].get(q['key'], '(sin respuesta)')}"
+        for q in questions
+    )
+    user_prompt = (
+        f"Alcalde: {user.get('nombre_completo', '')}\n"
+        f"Municipio: {user.get('municipio', '')} ({user.get('provincia', '')})\n\n"
+        f"Respuestas de la entrevista preparatoria:\n\n{answers_block}\n\n"
+        "Redacta la ponencia final ante el Concejo."
+    )
+
+    ponencia = await agent.llm.generate(
+        ALCALDE_COMPILE_SYSTEM, user_prompt,
+        temperature=0.7, max_tokens=1800, use_cache=False,
+    )
+
+    header = (
+        f"📜 *Ponencia del Alcalde {user.get('nombre_completo', '')}*\n"
+        f"{user.get('municipio', '')} ({user.get('provincia', '')})\n"
+        f"{'─' * 30}\n\n"
+    )
+    await agent._send_response(chat_id, header + ponencia)
+
+    async with get_session() as session:
+        from sqlalchemy import text as sql_text
+        await session.execute(
+            sql_text(
+                "INSERT INTO interactions (user_id, telegram_id, nombre_concejal, "
+                "municipio, provincia, bancada_id, bancada_nombre, question, response, "
+                "voice_used) "
+                "VALUES (:uid, :tid, :nombre, :mun, :prov, :bid, :bname, :q, :r, 'ponencia_alcalde')"
+            ),
+            {
+                "uid": user["id"], "tid": user_id,
+                "nombre": user.get("nombre_completo", ""),
+                "mun": user.get("municipio", ""),
+                "prov": user.get("provincia", ""),
+                "bid": user.get("bancada_id", 1),
+                "bname": user.get("bancada_nombre", ""),
+                "q": "/preparar_ponencia (entrevista alcalde)",
+                "r": ponencia[:2000],
+            },
+        )
+    return True

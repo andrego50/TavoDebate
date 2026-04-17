@@ -239,6 +239,11 @@ class ChatAgent(BaseAgent):
         """Procesa mensaje de texto regular con LLM."""
         from core.memory_manager import build_system_prompt
 
+        # Intercept ongoing alcalde interview before going to the regular LLM
+        from handlers.ponencia_handler import handle_alcalde_interview_reply
+        if await handle_alcalde_interview_reply(self, user_id, chat_id, text):
+            return
+
         async with get_session() as session:
             # Get user from DB
             from sqlalchemy import text as sql_text
