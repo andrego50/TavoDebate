@@ -162,40 +162,30 @@ async def _register_vote(
             await agent._send_response(chat_id, "Debes registrarte primero.")
             return
 
-        # Check if already voted (allow change)
+        # Idempotente: el UNIQUE index uniq_votes_user_target garantiza
+        # que un doble-tap del mismo callback NO crea dos votos; ON
+        # CONFLICT convierte el segundo en UPDATE atómico.
         result = await session.execute(
             sql_text(
-                "SELECT id, vote FROM votes WHERE telegram_id = :tid "
-                "AND vote_type = :vtype AND (target_id = :target OR (target_id IS NULL AND :target IS NULL))"
+                "INSERT INTO votes (user_id, telegram_id, nombre_concejal, municipio, "
+                "bancada_id, vote_type, target_id, vote) "
+                "VALUES (:uid, :tid, :name, :mun, :bid, :vtype, :target, :vote) "
+                "ON CONFLICT (telegram_id, vote_type, (COALESCE(target_id, 0))) "
+                "DO UPDATE SET vote = EXCLUDED.vote, "
+                "              changed_from = votes.vote "
+                "RETURNING (xmax <> 0) AS was_update"
             ),
-            {"tid": user_id, "vtype": vote_type, "target": target_id},
+            {
+                "uid": user["id"], "tid": user_id,
+                "name": user["nombre_completo"], "mun": user["municipio"],
+                "bid": user["bancada_id"], "vtype": vote_type,
+                "target": target_id, "vote": vote_value,
+            },
         )
-        existing = result.mappings().first()
-
-        if existing:
-            # Update vote
-            await session.execute(
-                sql_text(
-                    "UPDATE votes SET vote = :vote, changed_from = :old WHERE id = :vid"
-                ),
-                {"vote": vote_value, "old": existing["vote"], "vid": existing["id"]},
-            )
-            msg = f"Voto *actualizado*: {vote_value.upper()} (antes: {existing['vote']})"
+        was_update = result.scalar()
+        if was_update:
+            msg = f"Voto *actualizado*: {vote_value.upper()}"
         else:
-            # Insert new vote
-            await session.execute(
-                sql_text(
-                    "INSERT INTO votes (user_id, telegram_id, nombre_concejal, municipio, "
-                    "bancada_id, vote_type, target_id, vote) "
-                    "VALUES (:uid, :tid, :name, :mun, :bid, :vtype, :target, :vote)"
-                ),
-                {
-                    "uid": user["id"], "tid": user_id,
-                    "name": user["nombre_completo"], "mun": user["municipio"],
-                    "bid": user["bancada_id"], "vtype": vote_type,
-                    "target": target_id, "vote": vote_value,
-                },
-            )
             msg = f"Voto registrado: *{vote_value.upper()}*"
 
         # Update user

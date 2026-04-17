@@ -494,6 +494,24 @@ class ChatAgent(BaseAgent):
                 system, user_msg, temperature=0.4, max_tokens=350, use_cache=False,
             )
 
+            # Validación defensiva: si el LLM devolvió vacío, rozó el
+            # fallback de emergencia o es un mensaje de error, NO pisamos
+            # el session_summary previo con basura.
+            summary = (summary or "").strip()
+            if len(summary) < 30:
+                logger.warning(
+                    f"Summary refresh para tid={telegram_id} devolvió "
+                    f"respuesta muy corta ({len(summary)} chars); "
+                    f"conservando el resumen previo."
+                )
+                return
+            if "no puedo procesar" in summary.lower() or "error" in summary.lower()[:40]:
+                logger.warning(
+                    f"Summary refresh para tid={telegram_id} parece "
+                    f"respuesta de emergencia; conservando el previo."
+                )
+                return
+
             async with get_session() as session:
                 from sqlalchemy import text as sql_text
                 await session.execute(

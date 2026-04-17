@@ -50,6 +50,14 @@ async def init_db():
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_summary_at TIMESTAMP DEFAULT NULL"
         ))
+        # Idempotencia de votos: previene doble voto por doble-tap en el
+        # callback de confirmación. Si el usuario ya votó ese
+        # (vote_type, target_id), INSERT falla y el handler lo trata como
+        # update. COALESCE para manejar target_id NULL (votación de proyecto).
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uniq_votes_user_target "
+            "ON votes (telegram_id, vote_type, COALESCE(target_id, 0))"
+        ))
     logger.info("Database connection established")
 
 

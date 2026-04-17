@@ -21,8 +21,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    ports:
-      - "5435:5432"
+    # Puerto 5432 EXPUESTO SOLO al docker network. Ya no se publica al
+    # host; para consultas ad-hoc usar:
+    #   docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro
+    expose:
+      - "5432"
 
   redis:
     image: redis:7-alpine
@@ -31,8 +34,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    ports:
-      - "6379:6379"
+    # Redis SOLO dentro del docker network. Para consultas ad-hoc:
+    #   docker exec concejo-futuro-redis-1 redis-cli
+    expose:
+      - "6379"
 
   orchestrator:
     build:

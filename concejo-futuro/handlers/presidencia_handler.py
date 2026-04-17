@@ -31,7 +31,7 @@ async def _load_user(user_id: int) -> dict | None:
 def _is_presidente(user: dict | None) -> bool:
     if not user:
         return False
-    rol = (user.get("rol") or "").lower()
+    rol = (user.get("rol") or "").lower().strip()
     return rol == "presidente_concejo"
 
 
@@ -175,29 +175,26 @@ async def handle_votar_articulo(agent, user_id: int, chat_id: int, args: str):
             )
             return
 
-        # Upsert-style: if already voted, update; else insert
+        # Upsert atómico vía UNIQUE index uniq_votes_user_target.
+        # Inmune a doble-tap y race condition.
         result = await session.execute(sql_text(
-            "SELECT id, vote FROM votes WHERE telegram_id = :tid "
-            "AND vote_type = 'articulo' AND target_id = :n"
-        ), {"tid": user_id, "n": numero})
-        existing = result.mappings().first()
-        if existing:
-            await session.execute(sql_text(
-                "UPDATE votes SET vote = :v, changed_from = :old WHERE id = :vid"
-            ), {"v": vote, "old": existing["vote"], "vid": existing["id"]})
+            "INSERT INTO votes (user_id, telegram_id, nombre_concejal, "
+            "municipio, bancada_id, vote_type, target_id, vote) "
+            "VALUES (:uid, :tid, :nm, :mun, :bid, 'articulo', :tg, :v) "
+            "ON CONFLICT (telegram_id, vote_type, (COALESCE(target_id, 0))) "
+            "DO UPDATE SET vote = EXCLUDED.vote, changed_from = votes.vote "
+            "RETURNING (xmax <> 0) AS was_update"
+        ), {
+            "uid": user["id"], "tid": user_id,
+            "nm": user.get("nombre_completo", ""),
+            "mun": user.get("municipio", ""),
+            "bid": user.get("bancada_id"),
+            "tg": numero, "v": vote,
+        })
+        was_update = result.scalar()
+        if was_update:
             msg = f"Voto *actualizado* Art. {numero}: {vote.upper()}"
         else:
-            await session.execute(sql_text(
-                "INSERT INTO votes (user_id, telegram_id, nombre_concejal, "
-                "municipio, bancada_id, vote_type, target_id, vote) "
-                "VALUES (:uid, :tid, :nm, :mun, :bid, 'articulo', :tg, :v)"
-            ), {
-                "uid": user["id"], "tid": user_id,
-                "nm": user.get("nombre_completo", ""),
-                "mun": user.get("municipio", ""),
-                "bid": user.get("bancada_id"),
-                "tg": numero, "v": vote,
-            })
             msg = f"Voto registrado Art. {numero}: *{vote.upper()}*"
 
     await agent._send_response(chat_id, msg)
