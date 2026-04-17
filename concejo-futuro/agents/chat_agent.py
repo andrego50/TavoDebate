@@ -393,6 +393,31 @@ class ChatAgent(BaseAgent):
         bar = json.dumps({"inline_keyboard": get_advisor_bar()})
         await self._send_response(chat_id, response + advisor_label, reply_markup=bar)
 
+        # Detect executable actions (tuits, enmiendas) and propose them
+        # with approve-buttons. Tavo actúa SOLO cuando el usuario aprueba.
+        try:
+            from core.advisor_team import (
+                extract_actions, store_pending_actions, build_action_buttons,
+            )
+            actions = extract_actions(response)
+            if actions:
+                action_id = await store_pending_actions(self.bus.raw, user_id, actions)
+                buttons = build_action_buttons(action_id, actions)
+                lines = [
+                    "✨ *Acciones listas para ejecutar* (Tavo las hará si apruebas):",
+                    "",
+                ]
+                for i, act in enumerate(actions, 1):
+                    icon = "🐦" if act["type"] == "tuit" else "📝"
+                    lines.append(f"{i}. {icon} _{act['text'][:200]}{'…' if len(act['text'])>200 else ''}_")
+                await self._send_response(
+                    chat_id,
+                    "\n".join(lines),
+                    reply_markup=json.dumps({"inline_keyboard": buttons}),
+                )
+        except Exception as e:
+            logger.warning(f"Action extraction failed: {e}")
+
     async def _maybe_refresh_summary(self, db_user_id: int, telegram_id: int):
         """Resume la sesión del participante cada 5 interacciones.
 
@@ -543,6 +568,56 @@ class ChatAgent(BaseAgent):
                     "Ahora estás en modo directo con un solo especialista.\n"
                     "Para volver al modo equipo, toca 🧠 abajo o usa /asesores.",
                     reply_markup=bar,
+                )
+        elif data.startswith("tavo_do_"):
+            try:
+                _, _, action_id, idx_str = data.split("_", 3)
+                idx = int(idx_str)
+            except (ValueError, IndexError):
+                return
+            from core.advisor_team import load_pending_actions
+            actions = await load_pending_actions(self.bus.raw, user_id, action_id)
+            if not actions or idx >= len(actions):
+                await self._send_response(
+                    chat_id, "Esa acción ya expiró o no existe."
+                )
+                return
+            act = actions[idx]
+
+            if act["type"] == "tuit":
+                # Get user info for the tweet
+                async with get_session() as session:
+                    from sqlalchemy import text as sql_text
+                    result = await session.execute(
+                        sql_text(
+                            "SELECT nombre_completo, municipio, bancada_nombre "
+                            "FROM users WHERE telegram_id = :tid"
+                        ),
+                        {"tid": user_id},
+                    )
+                    u = result.mappings().first()
+                if not u:
+                    await self._send_response(chat_id, "Debes registrarte primero.")
+                    return
+                handle = "@" + "".join(w.capitalize() for w in u["nombre_completo"].split()[:2])
+                await self._publish_tweet({
+                    "author": handle,
+                    "text": act["text"],
+                    "municipio": u["municipio"],
+                    "bancada": u["bancada_nombre"],
+                    "is_concejal": True,
+                    "is_quote": False,
+                    "is_reply": False,
+                })
+                await self._send_response(
+                    chat_id,
+                    f"🐦 Tavo publicó tu tuit:\n\n*{handle}*: {act['text'][:200]}"
+                )
+            elif act["type"] == "enmienda":
+                from handlers.proposal_handlers import handle_proponer
+                await handle_proponer(self, user_id, chat_id, act["text"])
+                await self._send_response(
+                    chat_id, "📝 Tavo propuso la enmienda a tu nombre."
                 )
         elif data.startswith(("tweet_reply_", "tweet_quote_")):
             mode = "reply" if data.startswith("tweet_reply_") else "quote"

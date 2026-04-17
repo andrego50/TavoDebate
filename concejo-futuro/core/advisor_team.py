@@ -8,8 +8,96 @@ en paralelo a los asesores relevantes y se consolida en una respuesta
 import asyncio
 import logging
 import re
+import uuid
 
 from core.advisors import ADVISORS, pick_relevant_advisors
+
+
+# Patterns that the advisors output when they propose an executable action.
+TUIT_PATTERN = re.compile(
+    r'🐦\s*TUIT PROPUESTO[:\s]*\n\s*[«"]?(.+?)[»"]?\s*(?=\n\n|\n[\*\-🎯📰🎙️⚔️━]|\Z)',
+    re.DOTALL | re.IGNORECASE,
+)
+ENMIENDA_PATTERN = re.compile(
+    r'📝\s*ENMIENDA PROPUESTA[:\s]+(.+?)(?=\n\n|\n[\*\-🎯━]|\Z)',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def extract_actions(response: str) -> list[dict]:
+    """Devuelve acciones ejecutables (tuits, enmiendas) que los asesores
+    hayan propuesto dentro de la respuesta consolidada.
+    """
+    actions: list[dict] = []
+    for m in TUIT_PATTERN.finditer(response):
+        text = m.group(1).strip().strip('"').strip("«»").strip()
+        text = re.sub(r'\s+', ' ', text)[:280]
+        if 10 < len(text) <= 280:
+            actions.append({"type": "tuit", "text": text})
+    for m in ENMIENDA_PATTERN.finditer(response):
+        text = m.group(1).strip()
+        text = re.sub(r'\s+', ' ', text)[:500]
+        if 15 < len(text) <= 500:
+            actions.append({"type": "enmienda", "text": text})
+    # Deduplicate by (type, text)
+    seen = set()
+    out = []
+    for a in actions:
+        key = (a["type"], a["text"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(a)
+    return out
+
+
+async def store_pending_actions(redis, user_id: int, actions: list[dict]) -> str:
+    """Guarda las acciones detectadas en Redis con ID efímero (10 min)."""
+    action_id = uuid.uuid4().hex[:8]
+    import json
+    await redis.setex(
+        f"tavo_actions:{user_id}:{action_id}",
+        600,
+        json.dumps(actions),
+    )
+    return action_id
+
+
+async def load_pending_actions(redis, user_id: int, action_id: str) -> list[dict]:
+    import json
+    raw = await redis.get(f"tavo_actions:{user_id}:{action_id}")
+    if not raw:
+        return []
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
+
+def build_action_buttons(action_id: str, actions: list[dict]) -> list:
+    """Inline keyboard rows que proponen cada acción al usuario."""
+    rows = []
+    for i, act in enumerate(actions):
+        if act["type"] == "tuit":
+            label = f"🐦 Publicar tuit: {act['text'][:40]}…"
+            rows.append([{
+                "text": label,
+                "callback_data": f"tavo_do_{action_id}_{i}",
+            }])
+        elif act["type"] == "enmienda":
+            label = f"📝 Proponer enmienda: {act['text'][:40]}…"
+            rows.append([{
+                "text": label,
+                "callback_data": f"tavo_do_{action_id}_{i}",
+            }])
+    if rows:
+        rows.append([{
+            "text": "❌ No ejecutar ninguna",
+            "callback_data": "cancel_action",
+        }])
+    return rows
 
 logger = logging.getLogger("core.advisor_team")
 
