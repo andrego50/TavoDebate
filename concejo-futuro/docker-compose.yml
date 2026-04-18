@@ -21,6 +21,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     # Puerto 5432 EXPUESTO SOLO al docker network. Ya no se publica al
     # host; para consultas ad-hoc usar:
     #   docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro
@@ -34,6 +35,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     # Redis SOLO dentro del docker network. Para consultas ad-hoc:
     #   docker exec concejo-futuro-redis-1 redis-cli
     expose:
@@ -51,6 +53,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+    restart: unless-stopped
     volumes:
       - ./media:/app/media
       - ./backups:/app/backups
@@ -64,6 +67,7 @@ services:
       AGENT_TYPE: chat
     depends_on:
       - orchestrator
+    restart: unless-stopped
     deploy:
       replicas: 4
 
@@ -76,6 +80,7 @@ services:
       AGENT_TYPE: intel
     depends_on:
       - orchestrator
+    restart: unless-stopped
 
   agent-control:
     build:
@@ -86,6 +91,7 @@ services:
       AGENT_TYPE: control
     depends_on:
       - orchestrator
+    restart: unless-stopped
     volumes:
       - ./media:/app/media
 
@@ -100,6 +106,7 @@ services:
       - "8085:8080"
     depends_on:
       - orchestrator
+    restart: unless-stopped
 
   agent-audio:
     build:
@@ -110,6 +117,7 @@ services:
       AGENT_TYPE: audio
     depends_on:
       - orchestrator
+    restart: unless-stopped
     volumes:
       - audio_cache:/app/audio_cache
 
@@ -122,6 +130,7 @@ services:
       AGENT_TYPE: simulation
     depends_on:
       - orchestrator
+    restart: unless-stopped
 
 volumes:
   postgres_data:
