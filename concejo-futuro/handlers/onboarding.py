@@ -660,16 +660,36 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
                 {"name": nombre, "tid": user_id},
             )
 
+        # Filtro de grupos habilitados desde Redis (para que el admin
+        # pueda restringir el onboarding a ciertos grupos durante fases
+        # puntuales del taller). Key: tavodebate:enabled_groups — lista
+        # separada por comas; si está vacía/no existe, se habilitan todos.
+        enabled_raw = await agent.bus.raw.get("tavodebate:enabled_groups")
+        if isinstance(enabled_raw, bytes):
+            enabled_raw = enabled_raw.decode()
+        enabled_set = None
+        if enabled_raw:
+            enabled_set = {g.strip() for g in enabled_raw.split(",") if g.strip()}
+
         keyboard = [
             [{"text": g["label"], "callback_data": f"onboard_grupo_{key}"}]
             for key, g in GRUPOS_ONBOARDING.items()
+            if enabled_set is None or key in enabled_set
         ]
+
+        info_line = ""
+        if enabled_set and len(enabled_set) < len(GRUPOS_ONBOARDING):
+            info_line = (
+                f"\n_Registro limitado por el dinamizador a: "
+                f"{', '.join(sorted(enabled_set))}_\n"
+            )
 
         await agent.bus.stream_add("telegram:outgoing", {
             "chat_id": str(chat_id),
             "text": (
                 f"Hola *{nombre}*.\n\n"
                 f"*Paso 2 de 5:* ¿En qué rol participarás en el Concejo?"
+                f"{info_line}"
             ),
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
