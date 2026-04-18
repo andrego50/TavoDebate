@@ -429,7 +429,9 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
             )
             rol = (result.scalar() or "concejal")
 
-            if rol == "concejal":
+            # Presidente del Concejo también es concejal (vota) → sigue
+            # el mismo flujo de posición a favor/contra/indeciso.
+            if rol in ("concejal", "presidente_concejo"):
                 await session.execute(
                     sql_text(
                         "UPDATE users SET municipio = :mun, provincia = :prov, "
@@ -541,15 +543,16 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
 
         temas = info["temas"]
         resumen = info["resumen"]
-        temas_pg = "{" + ",".join(temas) + "}"
 
         async with get_session() as session:
             from sqlalchemy import text as sql_text
+            # asyncpg espera listas Python para text[], NO strings con
+            # formato PG literal. Pasar list directamente.
             await session.execute(
                 sql_text(
                     "UPDATE users SET intereses_raw = :raw, "
-                    "temas_interes = CAST(:temas AS text[]), "
-                    "intereses_keywords = CAST(:kw AS text[]), "
+                    "temas_interes = :temas, "
+                    "intereses_keywords = :kw, "
                     "intereses_resumen = :res, "
                     "onboarding_complete = true, onboarding_step = 0, "
                     "posicion_inicial = :pos "
@@ -557,8 +560,8 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
                 ),
                 {
                     "raw": info["label"],
-                    "temas": temas_pg,
-                    "kw": "{}",
+                    "temas": list(temas),
+                    "kw": [],
                     "res": resumen,
                     "pos": "neutral",
                     "tid": user_id,
