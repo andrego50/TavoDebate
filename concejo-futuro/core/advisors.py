@@ -483,10 +483,52 @@ def get_advisor_prompt(advisor_key: str) -> str:
     return next(iter(ADVISORS.values()))["prompt"]
 
 
-def get_advisor_keyboard() -> list:
-    """Menú principal: botón de Tavo arriba + 5 asesores individuales."""
+# Asesor más relevante por rol — usado para mostrar el atajo principal
+# en el menú/barra con máx 3 botones.
+RECOMMENDED_BY_ROLE = {
+    "concejal":           "juridico",
+    "presidente_concejo": "politico",
+    "alcalde":             "comunicaciones",
+    "sec_planeacion":      "gerencia",
+    "sec_hacienda":        "fiscal",
+    "sec_agricultura":     "agrario",
+    "dir_tic":             "tecnologico",
+    "dir_umata":           "agrario",
+    "contralor":           "juridico",
+    "personero":           "participacion",
+    "veedor":              "participacion",
+    "lider_campesino":     "agrario",
+    "lider_indigena":      "participacion",
+    "lider_jac":           "participacion",
+    "ambientalista":       "catastral",
+    "periodista":          "comunicaciones",
+    "empresa_tech":        "tecnologico",
+    "gremio_agro":         "agrario",
+}
+
+
+def get_recommended_advisor(rol: str | None) -> str:
+    return RECOMMENDED_BY_ROLE.get((rol or "concejal"), "juridico")
+
+
+def get_advisor_keyboard(rol: str | None = None) -> list:
+    """Menú principal reducido: 3 botones → Tavo, asesor recomendado, «ver los 10»."""
+    rec_key = get_recommended_advisor(rol)
+    rec = ADVISORS.get(rec_key, ADVISORS["juridico"])
+    return [
+        [{"text": f"{TEAM_META['emoji']} {TEAM_META['nombre']} — jefe de gabinete (default)",
+          "callback_data": f"advisor_{TEAM_KEY}"}],
+        [{"text": f"{rec['emoji']} {rec['nombre']} (recomendado para tu rol)",
+          "callback_data": f"advisor_{rec_key}"}],
+        [{"text": "📋 Ver los 10 asesores especializados",
+          "callback_data": "advisor_ver_todos"}],
+    ]
+
+
+def get_advisor_keyboard_full() -> list:
+    """Panel completo — solo se expone cuando el usuario pide «ver los 10»."""
     rows = [[
-        {"text": f"{TEAM_META['emoji']} {TEAM_META['nombre']} — jefe de gabinete (default)",
+        {"text": f"{TEAM_META['emoji']} {TEAM_META['nombre']} (default)",
          "callback_data": f"advisor_{TEAM_KEY}"},
     ]]
     for key, adv in ADVISORS.items():
@@ -497,14 +539,16 @@ def get_advisor_keyboard() -> list:
     return rows
 
 
-def get_advisor_bar() -> list:
-    """Fila compacta: emoji de equipo + 5 asesores."""
-    row = [{"text": TEAM_META["emoji"], "callback_data": f"advisor_{TEAM_KEY}"}]
-    row += [
-        {"text": adv["emoji"], "callback_data": f"advisor_{key}"}
-        for key, adv in ADVISORS.items()
-    ]
-    return [row]
+def get_advisor_bar(rol: str | None = None) -> list:
+    """Barra compacta al pie de cada respuesta: solo 3 botones."""
+    rec_key = get_recommended_advisor(rol)
+    rec = ADVISORS.get(rec_key, ADVISORS["juridico"])
+    return [[
+        {"text": f"{TEAM_META['emoji']} Tavo", "callback_data": f"advisor_{TEAM_KEY}"},
+        {"text": f"{rec['emoji']} {rec['nombre'].split()[1] if len(rec['nombre'].split()) > 1 else rec['nombre']}",
+         "callback_data": f"advisor_{rec_key}"},
+        {"text": "📋 Ver más", "callback_data": "advisor_ver_todos"},
+    ]]
 
 
 def pick_relevant_advisors(question: str, max_advisors: int = 3) -> list[str]:

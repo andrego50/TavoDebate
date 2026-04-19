@@ -130,46 +130,19 @@ class Orchestrator(BaseAgent):
         bot_url = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
 
         # Comandos para usuarios normales (concejales)
+        # Menú reducido a máx 3 comandos — UX limpia. Todos los demás
+        # comandos siguen funcionando si se tipean (/proponer, /tuitear,
+        # /votar_proyecto, etc.) pero no aparecen en el menú visual.
         user_commands = [
             {"command": "tutorial", "description": "🎓 Tutorial — cómo usar tu agente"},
-            {"command": "start", "description": "Iniciar / reiniciar registro"},
-            {"command": "help", "description": "Ver comandos disponibles"},
-            {"command": "estado", "description": "Tu resumen personal"},
-            {"command": "ciudadano", "description": "Voz: Líder campesino"},
-            {"command": "experto", "description": "Voz: Científico de datos"},
-            {"command": "contralor", "description": "Voz: Control fiscal"},
-            {"command": "empresa", "description": "Voz: Empresa tech"},
-            {"command": "alcalde", "description": "Voz: Alcalde proponente"},
-            {"command": "preparar_ponencia", "description": "IA te ayuda a armar tu ponencia"},
-            {"command": "asesores", "description": "🧠 Panel de asesores especializados"},
-            {"command": "tuitear", "description": "Publicar tweet en pantalla"},
-            {"command": "proponer", "description": "Proponer enmienda"},
-            {"command": "propuestas_todas", "description": "Ver todas las propuestas"},
-            {"command": "votar_proyecto", "description": "Votar el proyecto"},
-            {"command": "votar_articulo", "description": "Votar un artículo (uso: /votar_articulo N si|no|abstencion)"},
-            {"command": "votacion_articulos", "description": "🎖️ Presidente: abrir votación por artículos"},
-            {"command": "compilar_acuerdo", "description": "🎖️ Presidente: compilar texto final del acuerdo"},
-            {"command": "mi_feedback", "description": "🎓 Ver tu rúbrica de uso de IA"},
-            {"command": "mi_certificado", "description": "Descargar certificado PDF"},
+            {"command": "asesores", "description": "🧠 Hablar con Tavo y tus asesores"},
+            {"command": "help", "description": "🆘 Ver todos los comandos disponibles"},
         ]
 
-        # Comandos para admin/dinamizador (NO incluye comandos de concejal)
         admin_commands = [
-            {"command": "tutorial", "description": "🎓 Tutorial — comandos del dinamizador"},
-            {"command": "start", "description": "Panel de dinamizador"},
-            {"command": "estado", "description": "Stats del ejercicio"},
-            {"command": "fase", "description": "Cambiar fase del ejercicio"},
-            {"command": "broadcast", "description": "Mensaje a todos"},
-            {"command": "bomba", "description": "Bomba informativa"},
-            {"command": "fakenews", "description": "Lanzar fake news"},
-            {"command": "presion", "description": "Presión política"},
-            {"command": "ronda", "description": "Iniciar timer (minutos)"},
-            {"command": "tweet", "description": "Tweet simulado"},
-            {"command": "briefing", "description": "Forzar briefing"},
-            {"command": "historial_votaciones", "description": "Historial de votaciones"},
-            {"command": "llm", "description": "Cambiar proveedor LLM"},
-            {"command": "pin", "description": "PIN de acceso (4 dígitos)"},
-            {"command": "help", "description": "Ayuda completa"},
+            {"command": "fase", "description": "🎬 Cambiar fase del ejercicio"},
+            {"command": "broadcast", "description": "📢 Mensaje a todos los participantes"},
+            {"command": "estado", "description": "📊 Stats del ejercicio"},
         ]
 
         try:

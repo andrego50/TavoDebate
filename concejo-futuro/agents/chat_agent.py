@@ -172,7 +172,9 @@ class ChatAgent(BaseAgent):
             else:
                 adv_info = ADVISORS.get(current, {})
                 label = f"{adv_info.get('emoji', '')} {adv_info.get('nombre', current)}"
-            keyboard = json.dumps({"inline_keyboard": get_advisor_keyboard()})
+            # Menú con 3 botones (Tavo + recomendado por rol + ver los 10)
+            user_rol = await self._get_user_rol(user_id)
+            keyboard = json.dumps({"inline_keyboard": get_advisor_keyboard(user_rol)})
             await self._send_response(
                 chat_id,
                 "🧠 *Panel de Asesores*\n\n"
@@ -400,14 +402,14 @@ class ChatAgent(BaseAgent):
         # Refresh rolling session_summary every 5 interactions (background)
         asyncio.create_task(self._maybe_refresh_summary(user["id"], user_id))
 
-        # Send response with advisor bar (equipo + 5 emoji buttons)
+        # Send response with 3-button advisor bar (Tavo + recomendado + ver más)
         from core.advisors import get_advisor_bar, ADVISORS, TEAM_KEY, TEAM_META
         if advisor_key == TEAM_KEY:
             advisor_label = f"\n\n_{TEAM_META['emoji']} {TEAM_META['nombre']}_"
         else:
             adv_info = ADVISORS.get(advisor_key, {})
             advisor_label = f"\n\n_{adv_info.get('emoji', '')} {adv_info.get('nombre', '')}_"
-        bar = json.dumps({"inline_keyboard": get_advisor_bar()})
+        bar = json.dumps({"inline_keyboard": get_advisor_bar(user.get("rol"))})
         await self._send_response(chat_id, response + advisor_label, reply_markup=bar)
 
         # Detect executable actions (tuits, enmiendas) and propose them
@@ -582,9 +584,24 @@ class ChatAgent(BaseAgent):
                 await handle_admin_callback(self, user_id, chat_id, data, callback_id)
         elif data.startswith("advisor_"):
             advisor_key = data.replace("advisor_", "")
+            from core.advisors import (
+                ADVISORS, TEAM_KEY, TEAM_META,
+                get_advisor_bar, get_advisor_keyboard_full,
+            )
+            # Acción especial "ver todos": expande a panel completo
+            if advisor_key == "ver_todos":
+                kb = json.dumps({"inline_keyboard": get_advisor_keyboard_full()})
+                await self._send_response(
+                    chat_id,
+                    "📋 *Los 10 asesores especializados*\n\n"
+                    "Elige uno y entras en modo directo con él. "
+                    "Para volver al modo equipo, elige 🧠 Tavo.",
+                    reply_markup=kb,
+                )
+                return
             await self._set_active_advisor(user_id, advisor_key)
-            from core.advisors import ADVISORS, TEAM_KEY, TEAM_META, get_advisor_bar
-            bar = json.dumps({"inline_keyboard": get_advisor_bar()})
+            user_rol = await self._get_user_rol(user_id)
+            bar = json.dumps({"inline_keyboard": get_advisor_bar(user_rol)})
             if advisor_key == TEAM_KEY:
                 await self._send_response(
                     chat_id,
@@ -601,7 +618,7 @@ class ChatAgent(BaseAgent):
                     chat_id,
                     f"{adv.get('emoji', '')} Asesor cambiado a *{adv.get('nombre', advisor_key)}*\n\n"
                     "Ahora estás en modo directo con un solo especialista.\n"
-                    "Para volver al modo equipo, toca 🧠 abajo o usa /asesores.",
+                    "Para volver al modo equipo, toca 🧠 Tavo abajo o usa /asesores.",
                     reply_markup=bar,
                 )
         elif data == "presi_oficializar":
@@ -896,6 +913,19 @@ class ChatAgent(BaseAgent):
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({"inline_keyboard": keyboard}),
         })
+
+    async def _get_user_rol(self, telegram_id: int) -> str | None:
+        """Lee el rol del usuario desde DB (helper para personalizar menús)."""
+        try:
+            from sqlalchemy import text as sql_text
+            async with get_session() as session:
+                r = await session.execute(
+                    sql_text("SELECT rol FROM users WHERE telegram_id = :tid"),
+                    {"tid": telegram_id},
+                )
+                return r.scalar()
+        except Exception:
+            return None
 
     async def _get_active_advisor(self, telegram_id: int) -> str:
         """Obtiene el asesor activo del usuario desde Redis (default: equipo)."""
