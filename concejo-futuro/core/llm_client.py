@@ -1,4 +1,8 @@
-"""TavoDebate - Cliente LLM multi-proveedor con circuit breaker."""
+"""TavoDebate - Cliente LLM multi-proveedor con circuit breaker.\n\nPrioridad:
+  1. vLLM (modelo local Gemma 4B)
+  2. DeepSeek API
+  3. Kimi API
+"""
 
 import hashlib
 import json
@@ -15,11 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 class LLMProvider(str, Enum):
+    VLLM = "vllm"
     DEEPSEEK = "deepseek"
     KIMI = "kimi"
 
 
 PROVIDER_CONFIG = {
+    LLMProvider.VLLM: {
+        "base_url": settings.vllm_base_url,
+        "model": settings.vllm_model,
+        "api_key_attr": "vllm_api_key",
+    },
     LLMProvider.DEEPSEEK: {
         "base_url": "https://api.deepseek.com/v1",
         "model": "deepseek-chat",
@@ -34,23 +44,23 @@ PROVIDER_CONFIG = {
 
 RESPUESTAS_EMERGENCIA = {
     "default": (
-        "El sistema de IA está temporalmente saturado. Mientras tanto, "
+        "El sistema de IA est\u00e1 temporalmente saturado. Mientras tanto, "
         "revisa tu dossier de bancada (/estado) y prepara tus argumentos."
     ),
     "costos": (
-        "El proyecto SIADR tiene un presupuesto de $2.400M COP para 30 "
-        "municipios piloto. Consulta tu dossier para más detalles."
+        "El proyecto SIADR tiene un presupuesto de .400M COP para 30 "
+        "municipios piloto. Consulta tu dossier para m\u00e1s detalles."
     ),
     "corrupcion": (
-        "Recuerda los precedentes: Centros Poblados ($70.000M), "
+        "Recuerda los precedentes: Centros Poblados (0.000M), "
         "Agro Ingreso Seguro. Pregunta al contralor (/contralor)."
     ),
     "privacidad": (
-        "El proyecto contempla anonimización de datos y auditoría ciudadana. "
-        "Revisa el artículo 12 del proyecto de acuerdo."
+        "El proyecto contempla anonimizaci\u00f3n de datos y auditor\u00eda ciudadana. "
+        "Revisa el art\u00edculo 12 del proyecto de acuerdo."
     ),
     "empleo": (
-        "El SIADR no reemplaza empleos existentes. Automatiza la priorización "
+        "El SIADR no reemplaza empleos existentes. Automatiza la priorizaci\u00f3n "
         "que hoy se hace manualmente o no se hace."
     ),
 }
@@ -88,16 +98,10 @@ class CircuitBreaker:
 
 class LLMClient:
     def __init__(self, redis_client: aioredis.Redis | None = None):
-        self.primary = LLMProvider(settings.llm_primary)
-        self.fallback = (
-            LLMProvider.KIMI
-            if self.primary == LLMProvider.DEEPSEEK
-            else LLMProvider.DEEPSEEK
-        )
-        self.breakers = {
-            LLMProvider.DEEPSEEK: CircuitBreaker(),
-            LLMProvider.KIMI: CircuitBreaker(),
-        }
+        self.providers = [LLMProvider(p) for p in settings.llm_priority.split(",") if p.strip()]
+        if not self.providers:
+            self.providers = [LLMProvider.VLLM, LLMProvider.DEEPSEEK, LLMProvider.KIMI]
+        self.breakers = {p: CircuitBreaker() for p in LLMProvider}
         self.redis = redis_client
         self.http = httpx.AsyncClient(timeout=30.0)
 
@@ -116,8 +120,8 @@ class LLMClient:
             if cached:
                 return cached
 
-        # Try primary, then fallback
-        for provider in [self.primary, self.fallback]:
+        # Try providers in priority order
+        for provider in self.providers:
             if not self.breakers[provider].can_execute():
                 continue
             try:
@@ -146,9 +150,10 @@ class LLMClient:
     ) -> str:
         config = PROVIDER_CONFIG[provider]
         api_key = getattr(settings, config["api_key_attr"])
+        base_url = config["base_url"].rstrip("/")
 
         response = await self.http.post(
-            f"{config['base_url']}/chat/completions",
+            f"{base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -194,13 +199,8 @@ class LLMClient:
         return RESPUESTAS_EMERGENCIA["default"]
 
     async def switch_primary(self, provider: str):
-        self.primary = LLMProvider(provider)
-        self.fallback = (
-            LLMProvider.KIMI
-            if self.primary == LLMProvider.DEEPSEEK
-            else LLMProvider.DEEPSEEK
-        )
-        logger.info(f"LLM primary switched to {provider}")
+        self.providers = [LLMProvider(provider)] + [p for p in LLMProvider if p.value != provider]
+        logger.info(f"LLM priority switched to {provider}")
 
     async def close(self):
         await self.http.aclose()

@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     kimi_api_key: str = ""
     openai_api_key: str = ""
-    llm_primary: str = "deepseek"
+    vllm_api_key: str = "vllm"
+    vllm_base_url: str = "http://127.0.0.1:9090/v1"
+    vllm_model: str = "unsloth/gemma-3-4b-it"
+    llm_priority: str = "vllm,deepseek,kimi"
 
     # Database
     database_url: str = "postgresql+asyncpg://concejo:concejo2026@postgres:5432/concejo_futuro"
