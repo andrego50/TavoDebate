@@ -1,7 +1,8 @@
-"""TavoDebate - Cliente LLM multi-proveedor con circuit breaker.\n\nPrioridad:
-  1. vLLM (modelo local Gemma 4B)
-  2. DeepSeek API
-  3. Kimi API
+"""TavoDebate - Cliente LLM multi-proveedor con circuit breaker.
+
+Prioridad:
+  1. vLLM local (Gemma 4 12B QAT)
+  2. DeepSeek API (requiere DEEPSEEK_API_KEY)
 """
 
 import hashlib
@@ -21,7 +22,6 @@ logger = logging.getLogger(__name__)
 class LLMProvider(str, Enum):
     VLLM = "vllm"
     DEEPSEEK = "deepseek"
-    KIMI = "kimi"
 
 
 PROVIDER_CONFIG = {
@@ -34,11 +34,6 @@ PROVIDER_CONFIG = {
         "base_url": "https://api.deepseek.com/v1",
         "model": "deepseek-chat",
         "api_key_attr": "deepseek_api_key",
-    },
-    LLMProvider.KIMI: {
-        "base_url": "https://api.moonshot.cn/v1",
-        "model": "moonshot-v1-8k",
-        "api_key_attr": "kimi_api_key",
     },
 }
 
@@ -100,7 +95,7 @@ class LLMClient:
     def __init__(self, redis_client: aioredis.Redis | None = None):
         self.providers = [LLMProvider(p) for p in settings.llm_priority.split(",") if p.strip()]
         if not self.providers:
-            self.providers = [LLMProvider.VLLM, LLMProvider.DEEPSEEK, LLMProvider.KIMI]
+            self.providers = [LLMProvider.VLLM, LLMProvider.DEEPSEEK]
         self.breakers = {p: CircuitBreaker() for p in LLMProvider}
         self.redis = redis_client
         self.http = httpx.AsyncClient(timeout=30.0)

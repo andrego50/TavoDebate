@@ -17,7 +17,7 @@ Los participantes interactúan vía **Telegram** con un bot que simula un debate
 | Base de datos | PostgreSQL 16 + SQLAlchemy 2.0 async |
 | Message bus | Redis 7 (Streams + Pub/Sub) |
 | LLM primario | vLLM local — Gemma 4 12B QAT (`google/gemma-4-12B-it-qat-w4a16-ct`) en `192.168.0.221:9090` |
-| LLM fallback | DeepSeek (pendiente API key) / Kimi |
+| LLM fallback | DeepSeek (pendiente API key) |
 | Transcripción | OpenAI Whisper API |
 | Text-to-Speech | Edge-TTS (voces colombianas) |
 | Dashboard | Streamlit |
@@ -270,8 +270,7 @@ Vistas: `bancada_summary`, `active_users`, `vote_results`, `tema_distribution`
 
 ### Circuit Breaker (LLM)
 - Proveedor primario: **vLLM local** (`google/gemma-4-12B-it-qat-w4a16-ct` en `192.168.0.221:9090`)
-- Fallback 1: DeepSeek (pendiente `DEEPSEEK_API_KEY`)
-- Fallback 2: Kimi/Moonshot
+- Fallback: DeepSeek (pendiente `DEEPSEEK_API_KEY`; cuando esté disponible → `LLM_PRIORITY=vllm,deepseek`)
 - 3 fallos consecutivos → circuito abierto por 60s
 - Respuestas de emergencia hardcoded como último recurso
 - Prioridad controlada con `LLM_PRIORITY=vllm` en `.env`

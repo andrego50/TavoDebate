@@ -12,7 +12,6 @@ class Settings(BaseSettings):
 
     # LLM Providers
     deepseek_api_key: str = ""
-    kimi_api_key: str = ""
     openai_api_key: str = ""
     vllm_api_key: str = "vllm"
     vllm_base_url: str = "http://127.0.0.1:9090/v1"
