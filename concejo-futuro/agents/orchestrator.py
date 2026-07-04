@@ -186,7 +186,12 @@ class Orchestrator(BaseAgent):
                         try:
                             msg_type = data.get("type", "message")
 
-                            if msg_type == "document":
+                            if msg_type == "answer_callback":
+                                await client.post(
+                                    f"{bot_url}/answerCallbackQuery",
+                                    json={"callback_query_id": data["callback_query_id"]},
+                                )
+                            elif msg_type == "document":
                                 # Send file via sendDocument (multipart)
                                 import os
                                 file_path = data.get("file_path", "")

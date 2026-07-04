@@ -113,10 +113,11 @@ class LLMClient:
         max_tokens: int = 1000,
         use_cache: bool = True,
         cache_voice: str = "default",
+        cache_segment: str = "",
     ) -> str:
         # Check cache
         if use_cache and self.redis:
-            cached = await self._get_cache(cache_voice, user_message)
+            cached = await self._get_cache(cache_voice, user_message, cache_segment)
             if cached:
                 return cached
 
@@ -130,7 +131,7 @@ class LLMClient:
                 )
                 self.breakers[provider].record_success()
                 if use_cache and self.redis:
-                    await self._set_cache(cache_voice, user_message, response)
+                    await self._set_cache(cache_voice, user_message, response, cache_segment)
                 return response
             except Exception as e:
                 logger.error(f"LLM error ({provider.value}): {e}")
@@ -172,22 +173,23 @@ class LLMClient:
         data = response.json()
         return data["choices"][0]["message"]["content"]
 
-    async def _get_cache(self, voice: str, question: str) -> str | None:
-        key = self._cache_key(voice, question)
+    async def _get_cache(self, voice: str, question: str, cache_segment: str = "") -> str | None:
+        key = self._cache_key(voice, question, cache_segment)
         cached = await self.redis.get(key)
         if cached:
             logger.debug(f"Cache hit: {key}")
             return cached if isinstance(cached, str) else cached.decode()
         return None
 
-    async def _set_cache(self, voice: str, question: str, response: str):
-        key = self._cache_key(voice, question)
+    async def _set_cache(self, voice: str, question: str, response: str, cache_segment: str = ""):
+        key = self._cache_key(voice, question, cache_segment)
         await self.redis.setex(key, 300, response)
 
     @staticmethod
-    def _cache_key(voice: str, question: str) -> str:
+    def _cache_key(voice: str, question: str, cache_segment: str = "") -> str:
         normalized = question.lower().strip()[:200]
-        h = hashlib.md5(normalized.encode()).hexdigest()
+        segment_prefix = f"{cache_segment}:" if cache_segment else ""
+        h = hashlib.md5(f"{segment_prefix}{normalized}".encode()).hexdigest()
         return f"llm_cache:{voice}:{h}"
 
     @staticmethod

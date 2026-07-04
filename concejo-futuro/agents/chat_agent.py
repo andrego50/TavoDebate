@@ -249,7 +249,7 @@ class ChatAgent(BaseAgent):
             "/broadcast", "/bomba", "/fakenews", "/presion", "/gabinete_remover",
             "/gabinete_amenaza", "/fase", "/ronda", "/tweet",
             "/llm", "/modo_test", "/briefing", "/pantalla",
-            "/asignar_rol", "/roles", "/historial_votaciones",
+            "/asignar_rol", "/roles", "/historial_votaciones", "/reset_debate",
         ):
             if user_id in settings.admin_ids:
                 from handlers.admin_handlers import handle_admin_command
@@ -294,6 +294,14 @@ class ChatAgent(BaseAgent):
             from core.advisors import TEAM_KEY
             from core.input_guard import wrap_user_input
 
+            # Discriminador de caché por bancada+rol+posición: usuarios de la
+            # misma bancada comparten respuestas; bancadas distintas no se cruzan.
+            cache_seg = ":".join([
+                user.get("bancada_nombre") or "",
+                user.get("rol") or "",
+                user.get("posicion_actual") or "",
+            ])
+
             if advisor_key == TEAM_KEY:
                 # Team mode (orquestador): consulta paralela + síntesis.
                 # consult_team hace el wrapping internamente después del
@@ -304,7 +312,7 @@ class ChatAgent(BaseAgent):
                     chat_id, "🧠 Tavo está coordinando a tu equipo..."
                 )
                 response = await consult_team(
-                    self.llm, base_system, text, voice,
+                    self.llm, base_system, text, voice, cache_segment=cache_seg,
                 )
             else:
                 # Blindaje contra prompt injection: el texto humano se
@@ -314,7 +322,8 @@ class ChatAgent(BaseAgent):
                     user, session, advisor_key=advisor_key
                 )
                 response = await self.llm.generate(
-                    system_prompt, safe_text, cache_voice=f"{voice}_{advisor_key}"
+                    system_prompt, safe_text, cache_voice=f"{voice}_{advisor_key}",
+                    cache_segment=cache_seg,
                 )
 
                 # Handle web search if LLM requested one (single-advisor path)
@@ -564,6 +573,14 @@ class ChatAgent(BaseAgent):
         chat_id = callback["message"]["chat"]["id"]
         user_id = callback["from"]["id"]
         data = callback.get("data", "")
+
+        # Responder inmediatamente para quitar el spinner de carga de Telegram.
+        # Sin esto, cada botón deja el indicador girando ~30 s y los usuarios
+        # tocan dos veces, causando votos y acciones duplicadas.
+        await self.bus.stream_add("telegram:outgoing", {
+            "type": "answer_callback",
+            "callback_query_id": callback_id,
+        })
 
         if data.startswith("vote_"):
             from handlers.voting_handlers import handle_vote_callback

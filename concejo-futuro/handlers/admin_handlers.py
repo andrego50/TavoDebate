@@ -543,8 +543,99 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
             lines.append(f"  - {name} ({mun}) — {bancada}")
         await agent._send_response(chat_id, "\n".join(lines))
 
+    elif cmd == "reset_debate":
+        await handle_reset_debate(agent, chat_id)
+
     else:
         await agent._send_response(chat_id, f"Comando admin no reconocido: {cmd}")
+
+
+_RESET_SESSION_KEYS = [
+    "current_phase",
+    "tavodebate:recent_tweets",
+    "tavodebate:pantalla_history",
+    "tavodebate:tweet_counter",
+    "tavodebate:enabled_groups",
+]
+_RESET_SESSION_PATTERNS = [
+    "role_slot:*", "advisor:*", "llm_cache:*", "tavo_actions:*",
+    "tweet_ctx:*", "ponencia_interview:*", "acuerdo_borrador:*", "ratelimit:*",
+]
+_RESET_TRUNCATE_TABLES = [
+    "interactions", "proposals", "votes", "voting_sessions",
+    "broadcasts", "intelligence_reports", "fakenews_impact",
+    "proactive_proposals", "ponencias", "negotiations",
+    "pressure_events", "gabinete_events", "admin_actions",
+]
+
+
+async def handle_reset_debate(agent, chat_id: int, keep_users: bool = False):
+    """Limpia todas las tablas de sesión y las claves Redis para dejar el
+    sistema listo para un debate nuevo. Ejecutar ANTES de abrir el registro.
+
+    keep_users=True conserva los participantes pero borra su progreso
+    (útil para repetir el debate con el mismo grupo).
+    keep_users=False (default) elimina a todos excepto el dinamizador.
+    """
+    from sqlalchemy import text as sql_text
+
+    await agent._send_response(chat_id, "⏳ Reseteando debate...")
+
+    try:
+        async with get_session() as session:
+            for table in _RESET_TRUNCATE_TABLES:
+                await session.execute(sql_text(f"TRUNCATE {table} RESTART IDENTITY CASCADE"))
+
+            await session.execute(sql_text(
+                "UPDATE debate_state SET "
+                "global_summary = 'El debate aún no ha comenzado.', "
+                "temperature = 'frio', approval_probability = 50, "
+                "hottest_topic = 'ninguno', current_phase = 'registro', "
+                "phase_started_at = NOW() WHERE id = 1"
+            ))
+            await session.execute(sql_text(
+                "UPDATE bancada_state SET "
+                "summary = 'Sin actividad aún.', topics_ranking = '{}', "
+                "position_distribution = '{}', active_count = 0, "
+                "key_players = '[]', proposals = '[]'"
+            ))
+
+            if keep_users:
+                await session.execute(sql_text(
+                    "UPDATE users SET session_summary = NULL, voto_proyecto = NULL, "
+                    "votos_enmiendas = '{}', posicion_actual = NULL, posicion_cambios = 0, "
+                    "propuestas_count = 0, total_queries = 0"
+                ))
+            else:
+                await session.execute(sql_text(
+                    "DELETE FROM users WHERE bancada_nombre != 'Dinamizador'"
+                ))
+
+        r = agent.bus.raw
+        for key in _RESET_SESSION_KEYS:
+            await r.delete(key)
+        for pattern in _RESET_SESSION_PATTERNS:
+            async for key in r.scan_iter(match=pattern, count=200):
+                await r.delete(key)
+
+        # Resetea la timeline del SimulationAgent vía pub/sub
+        await agent.bus.publish("simulation:control", {"action": "reset"})
+
+        suffix = " (usuarios conservados)" if keep_users else " (usuarios eliminados)"
+        await agent._send_response(
+            chat_id,
+            f"✅ *Debate reseteado{suffix}.*\n\n"
+            "Sistema listo para nueva sesión:\n"
+            "• Tablas de sesión truncadas\n"
+            "• Redis de sesión limpio\n"
+            "• Timeline y fase reiniciadas\n\n"
+            "Usa `/pin <código>` para proteger el registro y luego avisa a los participantes."
+        )
+        logger.info(f"Debate reset by admin {chat_id}, keep_users={keep_users}")
+
+    except Exception as e:
+        logger.error(f"reset_debate failed: {e}", exc_info=True)
+        await agent._send_response(chat_id, f"❌ Error durante el reset: {e}")
 
 
 async def handle_approval_callback(agent, user_id: int, chat_id: int, data: str, callback_id: str):

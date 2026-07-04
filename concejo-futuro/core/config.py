@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     vllm_api_key: str = "vllm"
     vllm_base_url: str = "http://127.0.0.1:9090/v1"
-    vllm_model: str = "unsloth/gemma-3-4b-it"
-    llm_priority: str = "vllm,deepseek,kimi"
+    vllm_model: str = "google/gemma-4-12B-it-qat-w4a16-ct"
+    llm_priority: str = "vllm"
 
     # Database
     database_url: str = "postgresql+asyncpg://concejo:concejo2026@postgres:5432/concejo_futuro"

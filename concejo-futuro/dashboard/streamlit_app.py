@@ -28,6 +28,10 @@ def get_db():
 
 def query_db(sql, params=None):
     conn = get_db()
+    # Reconectar si la conexión cacheada murió (ej. reinicio de Postgres)
+    if conn.closed:
+        st.cache_resource.clear()
+        conn = get_db()
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -41,6 +45,9 @@ def query_db(sql, params=None):
 
 def execute_db(sql, params=None):
     conn = get_db()
+    if conn.closed:
+        st.cache_resource.clear()
+        conn = get_db()
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -50,20 +57,26 @@ def execute_db(sql, params=None):
         st.error(f"DB Error: {e}")
 
 
-def send_command(command: str, args: dict = None):
+def send_command(command: str, args: dict = None) -> bool:
     token = os.environ.get("ADMIN_API_TOKEN", "")
     if not token:
         st.error("ADMIN_API_TOKEN no configurado en el entorno del dashboard.")
-        return
+        return False
     try:
-        httpx.post(
+        resp = httpx.post(
             f"{ORCHESTRATOR_URL}/admin/command",
             json={"command": command, "args": args or {}},
             headers={"Authorization": f"Bearer {token}"},
             timeout=5,
         )
+        data = resp.json()
+        if not data.get("ok"):
+            st.error(f"El orquestador rechazó el comando: {data}")
+            return False
+        return True
     except Exception as e:
         st.error(f"API Error: {e}")
+        return False
 
 
 # --- Tabs ---
@@ -75,65 +88,80 @@ tab_monitor, tab_control, tab_medios, tab_concejales, tab_crisis = st.tabs([
 with tab_monitor:
     st.title("📊 Monitor en Vivo — TavoDebate")
 
-    # KPIs
-    col1, col2, col3, col4 = st.columns(4)
-    users = query_db("SELECT COUNT(*) as n FROM users WHERE onboarding_complete = true")
-    interactions = query_db("SELECT COUNT(*) as n FROM interactions")
-    recent = query_db(
-        "SELECT COUNT(*) as n FROM interactions WHERE created_at > NOW() - INTERVAL '1 minute'"
-    )
+    @st.fragment(run_every=5)
+    def monitor_live():
+        import pandas as pd
 
-    col1.metric("Concejales", users[0]["n"] if users else 0)
-    col2.metric("Total consultas", interactions[0]["n"] if interactions else 0)
-    col3.metric("Consultas/min", recent[0]["n"] if recent else 0)
-    col4.metric("Fase", "En curso")
+        # KPIs — 4 columnas en una sola fila
+        col1, col2, col3, col4 = st.columns(4)
 
-    st.divider()
-
-    # Charts
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Consultas por bancada")
-        bancada_data = query_db(
-            "SELECT bancada_nombre, COUNT(*) as n FROM interactions "
-            "WHERE bancada_id IS NOT NULL GROUP BY bancada_nombre ORDER BY n DESC"
+        users_row = query_db("SELECT COUNT(*) as n FROM users WHERE onboarding_complete = true")
+        interactions_row = query_db("SELECT COUNT(*) as n FROM interactions")
+        recent_row = query_db(
+            "SELECT COUNT(*) as n FROM interactions "
+            "WHERE created_at > NOW() - INTERVAL '1 minute'"
         )
-        if bancada_data:
-            import pandas as pd
-            df = pd.DataFrame(bancada_data)
-            st.bar_chart(df.set_index("bancada_nombre"))
-
-    with c2:
-        st.subheader("Consultas por voz")
-        voice_data = query_db(
-            "SELECT voice_used, COUNT(*) as n FROM interactions "
-            "GROUP BY voice_used ORDER BY n DESC"
+        phase_row = query_db(
+            "SELECT current_phase FROM debate_state WHERE id = 1"
         )
-        if voice_data:
-            import pandas as pd
-            df = pd.DataFrame(voice_data)
-            st.bar_chart(df.set_index("voice_used"))
 
-    st.divider()
+        col1.metric("Concejales", users_row[0]["n"] if users_row else 0)
+        col2.metric("Total consultas", interactions_row[0]["n"] if interactions_row else 0)
+        col3.metric("Consultas/min", recent_row[0]["n"] if recent_row else 0)
+        col4.metric("Fase", (phase_row[0]["current_phase"] if phase_row else "—") or "—")
 
-    # Recent interactions (anonymized)
-    st.subheader("Últimas consultas")
-    recents = query_db(
-        "SELECT bancada_nombre, municipio, voice_used, "
-        "LEFT(question, 100) as pregunta, created_at "
-        "FROM interactions ORDER BY created_at DESC LIMIT 10"
-    )
-    for r in recents:
-        st.text(f"[{r['bancada_nombre']}] {r['municipio']} ({r['voice_used']}): {r['pregunta']}")
+        st.divider()
 
-    # Proposals
-    st.subheader("Top propuestas")
-    proposals = query_db(
-        "SELECT id, bancada_nombre, resumen, apoyos "
-        "FROM proposals ORDER BY apoyos DESC LIMIT 5"
-    )
-    for p in proposals:
-        st.text(f"#{p['id']} [{p['bancada_nombre']}] {p['resumen']} — {p['apoyos']} apoyos")
+        # Charts
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("Consultas por bancada")
+            bancada_data = query_db(
+                "SELECT bancada_nombre, COUNT(*) as n FROM interactions "
+                "WHERE bancada_id IS NOT NULL GROUP BY bancada_nombre ORDER BY n DESC"
+            )
+            if bancada_data:
+                df = pd.DataFrame(bancada_data)
+                st.bar_chart(df.set_index("bancada_nombre"), use_container_width=True)
+
+        with c2:
+            st.subheader("Consultas por voz")
+            voice_data = query_db(
+                "SELECT voice_used, COUNT(*) as n FROM interactions "
+                "GROUP BY voice_used ORDER BY n DESC"
+            )
+            if voice_data:
+                df = pd.DataFrame(voice_data)
+                st.bar_chart(df.set_index("voice_used"), use_container_width=True)
+
+        st.divider()
+
+        # Recent interactions
+        st.subheader("Últimas consultas")
+        recents = query_db(
+            "SELECT bancada_nombre, municipio, voice_used, "
+            "LEFT(question, 100) as pregunta, created_at "
+            "FROM interactions ORDER BY created_at DESC LIMIT 10"
+        )
+        for r in recents:
+            st.text(
+                f"[{r['bancada_nombre']}] {r['municipio']} "
+                f"({r['voice_used']}): {r['pregunta']}"
+            )
+
+        # Proposals
+        st.subheader("Top propuestas")
+        proposals = query_db(
+            "SELECT id, bancada_nombre, resumen, apoyos "
+            "FROM proposals ORDER BY apoyos DESC LIMIT 5"
+        )
+        for p in proposals:
+            st.text(
+                f"#{p['id']} [{p['bancada_nombre']}] "
+                f"{p['resumen']} — {p['apoyos']} apoyos"
+            )
+
+    monitor_live()
 
 
 # ===== TAB 2: CONTROL =====
@@ -192,27 +220,77 @@ with tab_control:
     st.divider()
 
     # Voting
-    st.subheader("🗳️ Votación")
-    if st.button("Abrir votación de proyecto"):
-        execute_db(
-            "INSERT INTO voting_sessions (type, description) "
-            "VALUES ('proyecto', 'Votación del Proyecto SIADR')"
+    st.subheader("🗳️ Votación del Proyecto")
+
+    btn_col1, btn_col2 = st.columns(2)
+    with btn_col1:
+        if st.button("🗳️ Abrir votación", use_container_width=True):
+            # Cerrar sesiones previas abiertas
+            execute_db(
+                "UPDATE voting_sessions SET is_open = false, closed_at = NOW() "
+                "WHERE is_open = true"
+            )
+            # Abrir nueva sesión
+            execute_db(
+                "INSERT INTO voting_sessions (type, description, is_open) "
+                "VALUES ('proyecto', 'Votación del Proyecto de Acuerdo SIADR', true)"
+            )
+            # Iniciar timer de 5 min en el simulation agent
+            send_command("ronda", {"minutes": 5, "name": "Votación proyecto"})
+            st.success("Votación abierta — timer de 5 min iniciado")
+            st.info(
+                "Para enviar la papeleta a cada concejal, "
+                "usa /fase votacion desde el bot de Telegram."
+            )
+
+    with btn_col2:
+        if st.button("⏹️ Cerrar votación", use_container_width=True):
+            execute_db(
+                "UPDATE voting_sessions SET is_open = false, closed_at = NOW() "
+                "WHERE is_open = true"
+            )
+            st.success("Votación cerrada")
+
+    # Resultados — siempre 3 columnas, filtrados por sesión activa
+    @st.fragment(run_every=3)
+    def voting_results():
+        active = query_db(
+            "SELECT id, opened_at FROM voting_sessions "
+            "WHERE is_open = true AND type = 'proyecto' LIMIT 1"
         )
-        st.success("Sesión de votación abierta")
+        if not active:
+            st.info("No hay votación activa en este momento.")
+            return
 
-    if st.button("Cerrar votación activa"):
-        execute_db("UPDATE voting_sessions SET is_open = false, closed_at = NOW() WHERE is_open = true")
-        st.success("Votación cerrada")
+        sid = active[0]["id"]
+        opened_at = active[0]["opened_at"]
 
-    # Vote results
-    votes = query_db(
-        "SELECT vote, COUNT(*) as n FROM votes "
-        "WHERE vote_type = 'proyecto' GROUP BY vote"
-    )
-    if votes:
-        st.write("Resultados actuales:")
-        for v in votes:
-            st.metric(v["vote"], v["n"])
+        votes = query_db(
+            "SELECT vote, COUNT(*) as n FROM votes "
+            "WHERE vote_type = 'proyecto' AND created_at >= %s "
+            "GROUP BY vote",
+            (opened_at,),
+        )
+        total_row = query_db(
+            "SELECT COUNT(*) as n FROM users "
+            "WHERE onboarding_complete = true AND bancada_nombre != 'Dinamizador'"
+        )
+        total = total_row[0]["n"] if total_row else 0
+        vote_map = {v["vote"]: v["n"] for v in votes} if votes else {}
+        voted = sum(vote_map.values())
+
+        st.caption(
+            f"Sesión abierta a las {opened_at.strftime('%H:%M')} — "
+            f"{voted} de {total} han votado"
+        )
+
+        # Una sola fila, 3 columnas siempre
+        vc1, vc2, vc3 = st.columns(3)
+        vc1.metric("✅ A favor", vote_map.get("si", 0))
+        vc2.metric("❌ En contra", vote_map.get("no", 0))
+        vc3.metric("⚪ Abstención", vote_map.get("abstencion", 0))
+
+    voting_results()
 
     st.divider()
 
@@ -255,10 +333,11 @@ with tab_concejales:
     if bancada_filter != "Todas":
         query += f" AND bancada_id = {int(bancada_filter)}"
     if provincia_filter:
-        query += f" AND provincia ILIKE '%{provincia_filter}%'"
+        query += " AND provincia ILIKE %s"
+        params.append(f"%{provincia_filter}%")
     query += " ORDER BY last_active DESC"
 
-    users_data = query_db(query)
+    users_data = query_db(query, params if params else None)
     if users_data:
         import pandas as pd
         df = pd.DataFrame(users_data)
@@ -317,6 +396,6 @@ with tab_crisis:
         st.success("Todas las fake news reveladas")
 
 
-# Auto-refresh
-time.sleep(5)
-st.rerun()
+# Auto-refresh eliminado: los fragmentos del monitor y votación
+# se actualizan solos (run_every=5s / 3s) sin recargar toda la app.
+# Esto evita que el rerun global borre el texto del facilitador.

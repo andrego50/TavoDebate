@@ -121,7 +121,8 @@ SYNTHESIS_SYSTEM = (
 
 
 async def _query_single_advisor(llm, base_system: str, advisor_key: str,
-                                 safe_question: str, voice: str) -> tuple[str, str]:
+                                 safe_question: str, voice: str,
+                                 cache_segment: str = "") -> tuple[str, str]:
     """Llama al LLM con el system-prompt del asesor especificado.
 
     `safe_question` debe venir ya envuelto en <user_input>…</user_input>
@@ -144,6 +145,7 @@ async def _query_single_advisor(llm, base_system: str, advisor_key: str,
         response = await llm.generate(
             specialized_system, safe_question,
             cache_voice=cache_voice, max_tokens=500,
+            cache_segment=cache_segment,
         )
     except Exception as e:
         logger.warning(f"Advisor {advisor_key} failed: {e}")
@@ -174,7 +176,7 @@ async def _query_single_advisor(llm, base_system: str, advisor_key: str,
 
 
 async def consult_team(llm, base_system: str, question: str,
-                        voice: str) -> str:
+                        voice: str, cache_segment: str = "") -> str:
     """Consulta a los asesores relevantes y devuelve la respuesta
     consolidada lista para enviar al usuario.
 
@@ -192,7 +194,7 @@ async def consult_team(llm, base_system: str, question: str,
 
     # Parallel fan-out — cada asesor recibe el texto ya envuelto
     tasks = [
-        _query_single_advisor(llm, base_system, key, safe_question, voice)
+        _query_single_advisor(llm, base_system, key, safe_question, voice, cache_segment)
         for key in relevant
     ]
     results = await asyncio.gather(*tasks, return_exceptions=False)

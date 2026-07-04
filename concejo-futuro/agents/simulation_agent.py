@@ -62,6 +62,12 @@ class SimulationAgent(BaseAgent):
         elif action == "resume":
             self.paused = False
             logger.info("Simulation resumed")
+        elif action == "reset":
+            self.start_time = datetime.now()
+            self.fired_events.clear()
+            self.current_timer = None
+            self.current_phase = None
+            logger.info("Simulation reset: timeline and phase cleared")
 
     async def _handle_command(self, data: dict):
         action = data.get("action")

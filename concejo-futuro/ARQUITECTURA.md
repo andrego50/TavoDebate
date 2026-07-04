@@ -16,8 +16,8 @@ Los participantes interactúan vía **Telegram** con un bot que simula un debate
 | API/Orquestación | FastAPI + Uvicorn |
 | Base de datos | PostgreSQL 16 + SQLAlchemy 2.0 async |
 | Message bus | Redis 7 (Streams + Pub/Sub) |
-| LLM primario | DeepSeek Chat |
-| LLM fallback | Kimi / Moonshot |
+| LLM primario | vLLM local — Gemma 4 12B QAT (`google/gemma-4-12B-it-qat-w4a16-ct`) en `192.168.0.221:9090` |
+| LLM fallback | DeepSeek (pendiente API key) / Kimi |
 | Transcripción | OpenAI Whisper API |
 | Text-to-Speech | Edge-TTS (voces colombianas) |
 | Dashboard | Streamlit |
@@ -269,15 +269,18 @@ Vistas: `bancada_summary`, `active_users`, `vote_results`, `tema_distribution`
 ## Patrones Técnicos
 
 ### Circuit Breaker (LLM)
-- Proveedor primario: DeepSeek
-- Fallback: Kimi/Moonshot
+- Proveedor primario: **vLLM local** (`google/gemma-4-12B-it-qat-w4a16-ct` en `192.168.0.221:9090`)
+- Fallback 1: DeepSeek (pendiente `DEEPSEEK_API_KEY`)
+- Fallback 2: Kimi/Moonshot
 - 3 fallos consecutivos → circuito abierto por 60s
 - Respuestas de emergencia hardcoded como último recurso
+- Prioridad controlada con `LLM_PRIORITY=vllm` en `.env`
 
 ### Caché de Respuestas
 - Redis con TTL de 5 minutos
-- Key: MD5(voice + question)
-- Evita llamadas duplicadas al LLM
+- Key: `MD5(bancada:rol:posicion + voice + question[:200])`
+- Misma bancada+rol comparte caché; bancadas distintas tienen claves independientes
+- `cache_segment` propagado desde chat_agent → advisor_team → llm_client
 
 ### Consumer Groups (Chat Agent)
 - 2+ réplicas del Chat Agent
@@ -313,10 +316,18 @@ Vistas: `bancada_summary`, `active_users`, `vote_results`, `tema_distribution`
 
 ### Dashboard Streamlit (`dashboard/streamlit_app.py`)
 - 5 pestañas: Monitor, Control, Medios, Concejales, Sala de Crisis
-- Auto-refresh cada 5 segundos
+- Auto-refresh selectivo con `@st.fragment(run_every=5s / 3s)` — solo datos vivos; controles estáticos nunca se recargan
 - Control directo de broadcasts, bombas, fake news, fases, votación
 - Tabla filtrable de concejales
+- Votación: siempre 1 fila × 3 columnas (A favor / En contra / Abstención), filtrada por sesión activa
 - Timeline y revelación de fake news
+
+### Comandos de Administrador (Telegram)
+- `/reset_debate` — Limpieza completa entre sesiones: trunca 13 tablas, borra claves Redis de sesión, resetea SimulationAgent (timeline + timer + fase)
+- `/fase <nombre>` — Cambia la fase del debate
+- `/broadcast <texto>` — Envía mensaje a todos
+- `/bomba <N>` — Dispara bomba informativa
+- `/fakenews <N>` — Inserta fake news
 
 ---
 
@@ -327,12 +338,15 @@ Vistas: `bancada_summary`, `active_users`, `vote_results`, `tema_distribution`
 ```
 TELEGRAM_BOT_TOKEN=       # Token del bot de Telegram
 TELEGRAM_WEBHOOK_URL=     # URL pública del webhook
-DEEPSEEK_API_KEY=         # API key de DeepSeek
+VLLM_BASE_URL=            # http://192.168.0.221:9090/v1  (servidor vLLM local)
+VLLM_MODEL=               # google/gemma-4-12B-it-qat-w4a16-ct
+LLM_PRIORITY=             # vllm  (o vllm,deepseek cuando haya API key)
+DEEPSEEK_API_KEY=         # API key de DeepSeek (pendiente)
 KIMI_API_KEY=             # API key de Kimi/Moonshot
 OPENAI_API_KEY=           # API key de OpenAI (Whisper)
 DATABASE_URL=             # postgresql+asyncpg://...
 REDIS_URL=                # redis://redis:6379
-ADMIN_IDS=                # IDs de Telegram de administradores
+ADMIN_USER_IDS=           # IDs de Telegram de administradores
 ```
 
 ### Docker Compose
