@@ -1,0 +1,7 @@
+backups/
+geodashboard/data/interacciones_debate.json
+__pycache__/
+*.pyc
+.env
+*.log
+/tmp/

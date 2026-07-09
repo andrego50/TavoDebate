@@ -8,7 +8,7 @@ from core.llm_client import LLMClient
 logger = logging.getLogger("services.briefing")
 
 BRIEFING_PROMPT = """Eres un analista político generando un briefing ejecutivo para el facilitador
-del taller legislativo sobre el SIADR en Cundinamarca.
+de la sesión legislativa sobre el SIADR en Cundinamarca.
 
 Datos de las últimas interacciones:
 - Total interacciones: {total}

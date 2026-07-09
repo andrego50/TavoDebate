@@ -742,7 +742,7 @@ async def process_onboarding_text(agent, user_id: int, chat_id: int, text: str):
 
         # Filtro de grupos habilitados desde Redis (para que el admin
         # pueda restringir el onboarding a ciertos grupos durante fases
-        # puntuales del taller). Key: tavodebate:enabled_groups — lista
+        # puntuales del evento). Key: tavodebate:enabled_groups — lista
         # separada por comas; si está vacía/no existe, se habilitan todos.
         enabled_raw = await agent.bus.raw.get("tavodebate:enabled_groups")
         if isinstance(enabled_raw, bytes):

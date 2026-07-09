@@ -71,7 +71,7 @@ Los participantes interactúan vía **Telegram** con un bot que simula un debate
 | **Chat Agent** | `agents/chat_agent.py` | — | Procesa mensajes, corre **Tavo** (orquestador de asesores en `core/advisor_team.py`), maneja comandos y memoria persistente |
 | **Intel Agent** | `agents/intel_agent.py` | — | Clasifica interacciones, genera briefings, detecta cambios de posición |
 | **Control Agent** | `agents/control_agent.py` | — | Ejecuta broadcasts, bombas, fake news, presión, gabinete |
-| **Simulation Agent** | `agents/simulation_agent.py` | — | Timer, fases del taller, timeline de eventos automáticos |
+| **Simulation Agent** | `agents/simulation_agent.py` | — | Timer, fases de la sesión, timeline de eventos automáticos |
 | **Audio Agent** | `agents/audio_agent.py` | — | Transcripción Whisper, generación TTS Edge-TTS |
 | **Pantalla Agent** | `agents/pantalla_agent.py` | 8080 | Sirve pantalla de proyector + WebSocket para actualizaciones |
 
@@ -135,7 +135,7 @@ concejo-futuro/
 │   ├── pressure_handlers.py   # Tipos de presión política
 │   ├── gabinete_handlers.py   # Gabinete del alcalde
 │   ├── voice_handler.py       # Notas de voz
-│   └── certificate_generator.py # Certificados PDF
+│   └── document_handlers.py     # /mis_documentos, /doc_ponencia, PDF enmiendas
 ├── services/                  # Servicios reutilizables
 │   ├── tts_engine.py          # Motor Edge-TTS
 │   ├── classifier.py          # Clasificación con LLM
@@ -143,7 +143,8 @@ concejo-futuro/
 │   ├── ponencia.py            # Análisis de ponencias
 │   ├── alert_generator.py     # Alertas visuales (Playwright)
 │   ├── media_manager.py       # Gestión de archivos multimedia
-│   └── proactive_engine.py    # Motor proactivo de intervenciones
+│   ├── proactive_engine.py    # Motor proactivo de intervenciones
+│   └── document_generator.py  # Generación PDF (WeasyPrint + Jinja2)
 ├── dashboard/                 # Panel de control
 │   └── streamlit_app.py       # Dashboard Streamlit (5 pestañas)
 ├── geodashboard/              # Mapa interactivo
@@ -160,7 +161,7 @@ concejo-futuro/
 
 ---
 
-## Mecánica del Taller
+## Mecánica de la Simulación
 
 ### 6 Bancadas
 
@@ -185,7 +186,7 @@ Cada bancada tiene un **dossier privado** con información confidencial, vulnera
 | Empresa Tech | `/voz_empresa` | TechCundi, defiende la propuesta técnica |
 | Alcalde | `/voz_alcalde` | Político pragmático, busca consenso |
 
-### 8 Fases del Taller
+### 8 Fases de la Sesión
 
 1. **Registro** — Onboarding por Telegram (5 pasos, todo por botones salvo el nombre)
 2. **Ponencia** — Presentación del proyecto; para el **rol alcalde**, `/preparar_ponencia` dispara una entrevista guiada de 8 preguntas antes de compilar la pieza
@@ -304,7 +305,7 @@ Escenarios de prueba pre-configurados:
 ### Memoria Adaptativa
 - **Nivel 1**: Prompt inmediato (~4200 tokens) con contexto de bancada y debate
 - **Nivel 2**: Resúmenes rolling en PostgreSQL
-- **Nivel 3**: Historial completo para analytics post-taller
+- **Nivel 3**: Historial completo para analytics post-evento
 
 ---
 

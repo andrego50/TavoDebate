@@ -79,7 +79,7 @@ class SimulationAgent(BaseAgent):
             await self._start_timer(args)
 
     async def _change_phase(self, args: dict):
-        """Cambia la fase del taller."""
+        """Cambia la fase de la sesión legislativa."""
         phase = args.get("phase", "")
         duration_min = args.get("duration", 0)
 

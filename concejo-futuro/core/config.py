@@ -67,7 +67,7 @@ def get_settings() -> Settings:
 
 settings = Settings()
 
-# --- Constantes del taller ---
+# --- Constantes del evento legislativo ---
 
 BANCADAS = {
     1: {"nombre": "🏛️ Gobierno", "posicion": "A FAVOR"},

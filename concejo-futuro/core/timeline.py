@@ -1,4 +1,4 @@
-"""TavoDebate - Timeline de eventos automáticos del taller."""
+"""TavoDebate - Timeline de eventos automáticos de la sesión legislativa."""
 
 TIMELINE = [
     {"minute": 5, "type": "tweet", "data": {

@@ -203,7 +203,7 @@ class IntelAgent(BaseAgent):
         )
 
         briefing_prompt = (
-            "Eres el asistente de inteligencia de Andrés, facilitador del taller legislativo "
+            "Eres el asistente de inteligencia de Andrés, facilitador de la sesión legislativa "
             "TavoDebate sobre el proyecto SIADR en Cundinamarca. Genera un briefing ejecutivo "
             "de 3-5 líneas con: estado del debate, posiciones dominantes, recomendación de "
             "acción para Andrés. Sé directo y conciso."

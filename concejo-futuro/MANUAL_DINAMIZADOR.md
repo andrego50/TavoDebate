@@ -50,7 +50,7 @@ Tú como dinamizador controlas las fases, lanzas eventos sorpresa y monitoreas l
 
 ## Multi-escenario
 
-El sistema soporta múltiples escenarios de simulación simultáneos en la misma instancia. Esto permite correr un taller de **Concejo Municipal** y uno de **Asamblea Departamental** al mismo tiempo, con participantes completamente separados.
+El sistema soporta múltiples escenarios de simulación simultáneos en la misma instancia. Esto permite correr una sesión de **Concejo Municipal** y una de **Asamblea Departamental** al mismo tiempo, con participantes completamente separados.
 
 ### Escenarios pre-configurados
 
