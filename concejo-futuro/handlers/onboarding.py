@@ -238,26 +238,44 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
                     {"tid": user_id},
                 )
 
+        import redis.asyncio as _aioredis
+        _r = _aioredis.from_url(settings.redis_url, decode_responses=True)
+        fase_actual = await _r.get("debate:fase") or "registro"
+        await _r.aclose()
+
+        evento_nombre = "Sin evento asignado"
+        async with get_session() as _ses:
+            from sqlalchemy import text as _sql_text2
+            _res = await _ses.execute(
+                _sql_text2(
+                    "SELECT e.nombre FROM users u "
+                    "LEFT JOIN eventos e ON e.id = u.evento_id "
+                    "WHERE u.telegram_id = :tid"
+                ),
+                {"tid": user_id},
+            )
+            _row = _res.mappings().first()
+            if _row and _row.get("nombre"):
+                evento_nombre = _row["nombre"]
+
+        _sep = "─" * 25
         msg = (
-            "*Panel de Dinamizador — TavoDebate*\n\n"
-            "Eres el administrador del ejercicio. Comandos disponibles:\n\n"
-            "*Fases:*\n"
-            "/fase registro — Abrir registro\n"
-            "/fase ponencia\\_alcalde — Iniciar ponencia\n"
-            "/fase debate — Abrir debate\n"
-            "/fase votacion — Abrir votación\n\n"
-            "*Control:*\n"
-            "/broadcast <msg> — Mensaje a todos\n"
-            "/ronda <min> — Timer de N minutos\n"
-            "/tweet <texto> — Tweet simulado\n"
-            "/alerta <msg> — Alerta visual\n\n"
-            "*Info:*\n"
-            "/estado — Stats del ejercicio\n"
-            "/pin 1234 — Activar PIN de acceso\n"
-            "/pin off — Desactivar PIN\n"
-            "/llm deepseek|kimi — Cambiar LLM\n"
-            "/briefing — Forzar briefing\n"
-            "/help — Ayuda completa"
+            f"🎛️ *Panel del Facilitador — TavoDebate*\n\n"
+            f"*Sesión:* {evento_nombre}\n"
+            f"*Fase actual:* {fase_actual}\n\n"
+            f"{_sep}\n"
+            f"*Comandos de control*\n"
+            f"/fase → Cambiar fase del debate\n"
+            f"/broadcast → Mensaje a todos los participantes\n"
+            f"/estado → Resumen completo de actividad\n"
+            f"/eventos → Gestionar escenarios activos\n\n"
+            f"*Documentos y votación*\n"
+            f"/mis\\_documentos → Tus PDFs personales\n"
+            f"/historial\\_votaciones → Resultados de votaciones\n\n"
+            f"*Acceso*\n"
+            f"/pin → Activar/desactivar código de acceso\n\n"
+            f"{_sep}\n"
+            f"Usa /help para la lista completa de comandos de facilitador."
         )
         await agent._send_response(chat_id, msg)
         return
@@ -272,13 +290,15 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
 
     if user and user.get("onboarding_complete"):
         bancada = BANCADAS.get(user["bancada_id"], {})
+        user_rol_reg = user.get("rol") or "concejal"
+        rol_info_reg = ROLES.get(user_rol_reg, {})
+        rol_nombre_reg = rol_info_reg.get("nombre", "🏛️ Concejal")
+        bancada_nombre_reg = bancada.get("nombre", "Sin bancada")
         msg = (
-            f"Ya estás registrado:\n\n"
-            f"*{user['nombre_completo']}*\n"
-            f"Concejal de {user['municipio']} ({user['provincia']})\n"
-            f"Bancada: {bancada.get('nombre', '?')}\n"
-            f"Voz activa: {user.get('active_voice', 'ciudadano')}\n\n"
-            f"Usa /help para ver los comandos disponibles."
+            f"{rol_nombre_reg} *{user['nombre_completo']}*\n"
+            f"{bancada_nombre_reg}\n"
+            f"📍 {user['municipio']}, {user['provincia']}\n\n"
+            f"/estado para tu resumen · /help para comandos"
         )
         await agent._send_response(chat_id, msg)
         return
@@ -670,13 +690,27 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
                     f"{user['municipio']} ({user['provincia']})\n"
                 )
 
+            bancada_nombre = bancada.get("nombre", "Sin bancada")
+            puede_votar = rol_info.get("puede_votar", False)
+            sep = "─" * 25
+            voto_line = "\n• 🗳️ Puedes votar el proyecto" if puede_votar else ""
+
             msg = (
-                f"*Registro completado*\n\n"
-                f"*{user['nombre_completo']}*\n"
-                f"{header}"
-                f"Causa: {info['label']}\n\n"
-                f"{get_voice_selection_text()}\n\n"
-                f"Escribe cualquier pregunta para comenzar."
+                f"🎖️ *Registro completado — {user['nombre_completo']}*\n\n"
+                f"{rol_nombre} · {bancada_nombre}\n"
+                f"📍 {user['municipio']}, {user['provincia']}\n\n"
+                f"{sep}\n"
+                f"*Tu participación es individual*\n"
+                f"Cada consulta, propuesta y voto queda registrado a tu nombre. "
+                f"Puedes descargar tus documentos oficiales en cualquier momento con /mis\\_documentos.\n\n"
+                f"*También apareces en*\n"
+                f"• 📊 Panel de bancada: {bancada_nombre}\n"
+                f"• 🗺️ Actividad municipal: {user['municipio']}"
+                f"{voto_line}\n\n"
+                f"{sep}\n"
+                f"*Para comenzar*\n"
+                f"Escríbeme cualquier pregunta sobre el proyecto, envía una nota de voz o una foto. "
+                f"Tavo coordina a tus asesores especializados."
             )
             await agent._send_response(chat_id, msg)
 
