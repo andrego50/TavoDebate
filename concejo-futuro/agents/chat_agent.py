@@ -74,6 +74,11 @@ class ChatAgent(BaseAgent):
             await self._handle_voice(user_id, chat_id, message)
             return
 
+        # Photo / image message
+        if "photo" in message:
+            await self._handle_photo(user_id, chat_id, message)
+            return
+
         text = message.get("text", "")
         if not text:
             return
@@ -141,6 +146,9 @@ class ChatAgent(BaseAgent):
         elif command == "/negociar":
             from handlers.negotiation_handlers import handle_negociar
             await handle_negociar(self, user_id, chat_id, args)
+        elif command == "/msg_negociacion":
+            from handlers.negotiation_handlers import handle_msg_negociacion
+            await handle_msg_negociacion(self, user_id, chat_id, args)
         elif command == "/mi_certificado":
             from handlers.certificate_generator import handle_certificado
             await handle_certificado(self, user_id, chat_id)
@@ -246,7 +254,7 @@ class ChatAgent(BaseAgent):
             await redis.aclose()
         # Admin commands
         elif command in (
-            "/broadcast", "/bomba", "/fakenews", "/presion", "/gabinete_remover",
+            "/broadcast", "/presion", "/gabinete_remover",
             "/gabinete_amenaza", "/fase", "/ronda", "/tweet",
             "/llm", "/modo_test", "/briefing", "/pantalla",
             "/asignar_rol", "/roles", "/historial_votaciones", "/reset_debate",
@@ -410,6 +418,8 @@ class ChatAgent(BaseAgent):
 
         # Refresh rolling session_summary every 5 interactions (background)
         asyncio.create_task(self._maybe_refresh_summary(user["id"], user_id))
+        # Refresh long-term profile every 10 interactions (background)
+        asyncio.create_task(self._maybe_refresh_long_term_profile(user["id"], user_id))
 
         # Send response with 3-button advisor bar (Tavo + recomendado + ver más)
         from core.advisors import get_advisor_bar, ADVISORS, TEAM_KEY, TEAM_META
@@ -535,6 +545,103 @@ class ChatAgent(BaseAgent):
         except Exception as e:
             logger.warning(f"Session summary refresh failed for {telegram_id}: {e}")
 
+    async def _maybe_refresh_long_term_profile(self, db_user_id: int, telegram_id: int):
+        """Actualiza el perfil de largo plazo cada 10 interacciones.
+
+        La tabla user_long_term_profiles sobrevive resets completos —
+        el perfil acumula patrones a través de múltiples sesiones.
+        Detecta: temas recurrentes, estilo argumentativo, posiciones
+        sostenidas, asesores preferidos y comportamientos de debate.
+        """
+        try:
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+
+                total = (await session.execute(
+                    sql_text("SELECT COUNT(*) FROM interactions WHERE user_id = :uid"),
+                    {"uid": db_user_id},
+                )).scalar() or 0
+
+                if total == 0 or total % 10 != 0:
+                    return
+
+                # Últimas 50 interacciones de toda la historia del usuario
+                rows = (await session.execute(
+                    sql_text(
+                        "SELECT question, response, advisor_used, created_at "
+                        "FROM interactions WHERE user_id = :uid "
+                        "ORDER BY created_at DESC LIMIT 50"
+                    ),
+                    {"uid": db_user_id},
+                )).mappings().all()
+
+                # Perfil previo
+                prev_row = (await session.execute(
+                    sql_text(
+                        "SELECT profile, sessions FROM user_long_term_profiles "
+                        "WHERE telegram_id = :tid"
+                    ),
+                    {"tid": telegram_id},
+                )).mappings().first()
+                prev_profile = prev_row["profile"] if prev_row else ""
+                prev_sessions = prev_row["sessions"] if prev_row else 0
+
+            history_text = "\n\n".join(
+                f"[{r['advisor_used'] or '?'}] P: {(r['question'] or '')[:200]}\n"
+                f"R: {(r['response'] or '')[:300]}"
+                for r in reversed(rows)
+            )
+            system = (
+                "Eres un analista de perfiles para una simulación legislativa. "
+                "Tu tarea es actualizar el perfil de largo plazo de un participante "
+                "a partir de su historial de interacciones acumulado a lo largo de "
+                "múltiples sesiones. El perfil debe capturar:\n"
+                "- Temas que el participante trae recurrentemente (ej: género, agua, corrupción)\n"
+                "- Su estilo argumentativo (emocional, técnico, político, confrontacional)\n"
+                "- Posiciones sostenidas y si han evolucionado\n"
+                "- Asesores o voces que prefiere usar\n"
+                "- Compromisos o propuestas que ha impulsado\n"
+                "- Cualquier patrón notable de comportamiento en el debate\n\n"
+                "El perfil es ACUMULATIVO: integra el perfil previo con las nuevas observaciones. "
+                "Si hay evolución o cambio de posición, nótalo explícitamente. "
+                "Máximo 300 palabras, en bullets concisos. Sin saludos ni meta-comentarios."
+            )
+            user_msg = (
+                f"Perfil acumulado previo (sesiones anteriores):\n"
+                f"{prev_profile or '(primera sesión)'}\n\n"
+                f"Interacciones recientes ({len(rows)} más recientes):\n\n"
+                f"{history_text}\n\n"
+                "Redacta el perfil actualizado, integrando lo anterior con lo nuevo."
+            )
+            new_profile = await self.llm.generate(
+                system, user_msg, temperature=0.3, max_tokens=450, use_cache=False,
+            )
+            new_profile = (new_profile or "").strip()
+            if len(new_profile) < 30:
+                return
+
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                await session.execute(
+                    sql_text("""
+                        INSERT INTO user_long_term_profiles
+                            (telegram_id, profile, sessions, updated_at)
+                        VALUES (:tid, :profile, :sessions, NOW())
+                        ON CONFLICT (telegram_id) DO UPDATE SET
+                            profile    = EXCLUDED.profile,
+                            sessions   = EXCLUDED.sessions,
+                            updated_at = NOW()
+                    """),
+                    {
+                        "tid": telegram_id,
+                        "profile": new_profile[:6000],
+                        "sessions": prev_sessions + 1,
+                    },
+                )
+            logger.info(f"Long-term profile updated for tid={telegram_id} (session #{prev_sessions + 1})")
+        except Exception as e:
+            logger.warning(f"Long-term profile refresh failed for {telegram_id}: {e}")
+
     async def _handle_voice(self, user_id: int, chat_id: int, message: dict):
         """Envía nota de voz al Agente Audio para transcripción."""
         voice = message["voice"]
@@ -566,6 +673,86 @@ class ChatAgent(BaseAgent):
                     break
         finally:
             await pubsub.unsubscribe(f"audio:result:{user_id}")
+
+    async def _handle_photo(self, user_id: int, chat_id: int, message: dict):
+        """Analiza imagen enviada por el usuario usando Gemma 4 multimodal."""
+        import base64
+
+        # Telegram sends multiple sizes; take the largest (last in array)
+        photos = message["photo"]
+        file_id = photos[-1]["file_id"]
+        caption = message.get("caption", "").strip()
+        question = caption if caption else "¿Qué ves en esta imagen? Analízala en el contexto del debate legislativo."
+
+        await self._send_response(chat_id, "Analizando imagen...")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"https://api.telegram.org/bot{settings.telegram_bot_token}/getFile",
+                    params={"file_id": file_id},
+                )
+                file_path = resp.json()["result"]["file_path"]
+                img_resp = await client.get(
+                    f"https://api.telegram.org/file/bot{settings.telegram_bot_token}/{file_path}"
+                )
+                img_b64 = base64.b64encode(img_resp.content).decode()
+
+            # Detect MIME type from extension
+            ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "jpg"
+            mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                    "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/jpeg")
+
+            # Get user context for the prompt
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                result = await session.execute(
+                    sql_text("SELECT * FROM users WHERE telegram_id = :tid"),
+                    {"tid": user_id},
+                )
+                user = result.mappings().first()
+
+            context = ""
+            if user:
+                context = (
+                    f"El participante es {user.get('nombre_completo', '?')}, "
+                    f"{user.get('rol', 'concejal')} de {user.get('municipio', '?')}. "
+                    f"Responde en español, de forma relevante para el contexto legislativo. "
+                )
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"{settings.vllm_base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.vllm_api_key}"},
+                    json={
+                        "model": settings.vllm_model,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": f"data:{mime};base64,{img_b64}"}
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": f"{context}{question}"
+                                    }
+                                ]
+                            }
+                        ],
+                        "max_tokens": 600,
+                        "temperature": 0.3,
+                    },
+                )
+                resp.raise_for_status()
+                answer = resp.json()["choices"][0]["message"]["content"].strip()
+
+            await self._send_response(chat_id, answer)
+
+        except Exception as e:
+            logger.error(f"Photo handling error for {user_id}: {e}", exc_info=True)
+            await self._send_response(chat_id, "No pude analizar la imagen. Intenta de nuevo.")
 
     async def _process_callback(self, callback: dict):
         """Procesa callback queries (botones inline)."""
@@ -743,13 +930,11 @@ class ChatAgent(BaseAgent):
 
     async def _interpret_admin_nl(self, text: str) -> str | None:
         """Interpreta texto natural del admin como comando.
-        Returns the command string (e.g. '/bomba') or None if not a command."""
+        Returns the command string (e.g. '/tweet') or None if not a command."""
         t = text.lower().strip()
 
         # Quick keyword matching (no LLM needed)
         keyword_map = [
-            (["bomba", "dato bomba", "lanza bomba", "enviar bomba"], "/bomba"),
-            (["fake", "fakenews", "noticia falsa", "lanzar fake"], "/fakenews"),
             (["tweet", "tuit", "publicar tweet", "twit"], "/tweet"),
             (["fase", "cambiar fase", "pasar a", "siguiente fase"], "/fase"),
             (["estado", "estadísticas", "stats", "cómo va", "como va", "cuántos", "cuantos"], "/estado"),
@@ -770,10 +955,6 @@ class ChatAgent(BaseAgent):
                     for kw2 in keywords:
                         rest = rest.replace(kw2, "").strip()
                     # Handle specific patterns
-                    if cmd == "/bomba" and not rest:
-                        return "/bomba"
-                    if cmd == "/fakenews" and not rest:
-                        return "/fakenews"
                     if cmd == "/tweet" and not rest:
                         return "/tweet"
                     if rest:

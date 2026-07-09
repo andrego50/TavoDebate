@@ -125,11 +125,18 @@ async def handle_apoyar(agent, user_id: int, chat_id: int, args: str):
             await agent._send_response(chat_id, f"No existe la propuesta #{proposal_id}")
             return
 
-        # Check not already supported
+        # Check not already supported — apoyada_por is a PG int[] returned as list
         apoyada_por = proposal.get("apoyada_por") or []
-        if user_id in apoyada_por:
+        if user_id in [int(x) for x in apoyada_por]:
             await agent._send_response(chat_id, "Ya apoyaste esta propuesta.")
             return
+
+        # Get supporter info for notification
+        result = await session.execute(
+            sql_text("SELECT nombre_completo, bancada_id, bancada_nombre FROM users WHERE telegram_id = :tid"),
+            {"tid": user_id},
+        )
+        supporter = result.mappings().first()
 
         # Add support
         await session.execute(
@@ -141,11 +148,36 @@ async def handle_apoyar(agent, user_id: int, chat_id: int, args: str):
             {"tid": user_id, "pid": proposal_id},
         )
 
+    new_count = (proposal.get("apoyos") or 0) + 1
     await agent._send_response(
         chat_id,
         f"Apoyo registrado para propuesta #{proposal_id} "
-        f"(ahora tiene {(proposal.get('apoyos', 1)) + 1} apoyos)",
+        f"(ahora tiene {new_count} apoyos)",
     )
+
+    # Notify proposal author if different user
+    author_tid = proposal.get("telegram_id")
+    if author_tid and author_tid != user_id:
+        supporter_name = supporter["nombre_completo"] if supporter else str(user_id)
+        supporter_bancada = supporter["bancada_nombre"] if supporter else "?"
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(author_tid),
+            "text": (
+                f"🤝 *Tu propuesta #{proposal_id} recibió un apoyo*\n\n"
+                f"{supporter_name} ({supporter_bancada}) apoya tu enmienda.\n"
+                f"Total apoyos: {new_count}"
+            ),
+            "parse_mode": "Markdown",
+        })
+
+    # Publish for alliance tracking on pantalla/intel
+    await agent.bus.publish("proposal:supported", {
+        "proposal_id": proposal_id,
+        "supporter_id": user_id,
+        "supporter_bancada": supporter["bancada_id"] if supporter else None,
+        "author_bancada": proposal.get("bancada_id"),
+        "new_count": new_count,
+    })
 
 
 async def handle_propuestas_todas(agent, chat_id: int):

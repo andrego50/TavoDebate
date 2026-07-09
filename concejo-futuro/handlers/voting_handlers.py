@@ -99,6 +99,13 @@ async def handle_votar_enmienda(agent, user_id: int, chat_id: int, args: str):
 
 async def handle_vote_callback(agent, user_id: int, chat_id: int, data: str, callback_id: str):
     """Procesa el voto con confirmación de 2 pasos."""
+    if data == "vote_cancel":
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": "Voto cancelado. Puedes votar cuando quieras.",
+        })
+        return
+
     parts = data.split("_")
     # vote_proyecto_si or vote_enmienda_N_si or vote_confirm_...
     if len(parts) < 3:

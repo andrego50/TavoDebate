@@ -1,0 +1,15 @@
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      AGENT_TYPE: dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    command: streamlit run dashboard/streamlit_app.py --server.port=8501 --server.address=0.0.0.0

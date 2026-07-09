@@ -76,8 +76,6 @@ class ControlAgent(BaseAgent):
 
         handlers = {
             "broadcast": self._execute_broadcast,
-            "bomb": self._execute_bomb,
-            "fakenews": self._execute_fakenews,
             "pressure": self._execute_pressure,
             "gabinete": self._execute_gabinete,
             "alert": self._execute_alert,
@@ -130,80 +128,6 @@ class ControlAgent(BaseAgent):
             )
 
         logger.info(f"Broadcast sent to {len(users)} users (target: {target})")
-
-    async def _execute_bomb(self, args: dict):
-        """Envía dato bomba."""
-        bomb_id = args.get("bomb_id", 1)
-        target = args.get("target", "all")
-
-        from core.bombs import BOMBS
-        bomb = BOMBS.get(bomb_id)
-        if not bomb:
-            logger.warning(f"Bomb {bomb_id} not found")
-            return
-
-        users = await self._get_target_users(target)
-        for user in users:
-            await self.bus.stream_add("telegram:outgoing", {
-                "chat_id": str(user["telegram_id"]),
-                "text": f"🔴 *DATO BOMBA*\n\n{bomb['text']}",
-                "parse_mode": "Markdown",
-            })
-
-        await self.bus.publish("bomb:sent", {
-            "bomb_id": bomb_id,
-            "text": bomb["text"],
-            "target": target,
-            "reach": len(users),
-            "timestamp": datetime.now().isoformat(),
-        })
-
-        # Auto-publish reaction tweets
-        from core.tweets import BOMB_TWEETS
-        for tweet in BOMB_TWEETS.get(bomb_id, []):
-            await asyncio.sleep(2)
-            await self.bus.publish("tweet:new", {
-                "author": tweet["author"],
-                "text": tweet["text"],
-                "is_reaction": True,
-            })
-
-    async def _execute_fakenews(self, args: dict):
-        """Envía fake news."""
-        news_id = args.get("news_id", 1)
-        target = args.get("target", "all")
-
-        from core.fakenews import FAKE_NEWS
-        news = FAKE_NEWS.get(news_id)
-        if not news:
-            return
-
-        users = await self._get_target_users(target)
-        for user in users:
-            await self.bus.stream_add("telegram:outgoing", {
-                "chat_id": str(user["telegram_id"]),
-                "text": f"📰 *ÚLTIMA HORA*\n\n{news['text']}",
-                "parse_mode": "Markdown",
-            })
-
-        await self.bus.publish("fakenews:sent", {
-            "news_id": news_id,
-            "text": news["text"],
-            "target": target,
-            "reach": len(users),
-            "is_fake": news.get("is_fake", True),
-            "timestamp": datetime.now().isoformat(),
-        })
-
-        # Auto-publish reaction tweets
-        from core.tweets import FAKENEWS_TWEETS
-        for tweet in FAKENEWS_TWEETS.get(news_id, []):
-            await asyncio.sleep(2)
-            await self.bus.publish("tweet:new", {
-                "author": tweet["author"],
-                "text": tweet["text"],
-                "is_reaction": True,
-            })
 
     async def _execute_pressure(self, args: dict):
         """Ejecuta presión estructurada."""

@@ -66,24 +66,19 @@ class AudioAgent(BaseAgent):
                 logger.error(f"Audio agent error: {e}", exc_info=True)
 
     async def _handle_transcribe(self, data: dict):
-        """Transcribe audio con OpenAI Whisper API."""
+        """Transcribe audio con Gemma 4 12B multimodal vía vLLM."""
         file_id = data.get("file_id")
         callback_channel = data.get("callback_channel")
 
         try:
-            # Download file from Telegram
             audio_path = await self._download_telegram_file(file_id)
+            transcript = await self._transcribe_gemma(audio_path)
 
-            # Transcribe with Whisper
-            transcript = await self._transcribe_whisper(audio_path)
-
-            # Publish result
             await self.bus.publish(callback_channel, {
                 "transcript": transcript,
                 "user_id": data.get("user_id"),
             })
 
-            # Cleanup
             if os.path.exists(audio_path):
                 os.remove(audio_path)
 
@@ -115,18 +110,50 @@ class AudioAgent(BaseAgent):
 
             return local_path
 
-    async def _transcribe_whisper(self, audio_path: str) -> str:
-        """Transcribe con OpenAI Whisper API."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            with open(audio_path, "rb") as f:
-                resp = await client.post(
-                    "https://api.openai.com/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
-                    files={"file": ("audio.ogg", f, "audio/ogg")},
-                    data={"model": "whisper-1", "language": "es"},
-                )
+    async def _transcribe_gemma(self, audio_path: str) -> str:
+        """Transcribe audio usando Gemma 4 12B multimodal vía vLLM."""
+        import base64
+
+        with open(audio_path, "rb") as f:
+            audio_b64 = base64.b64encode(f.read()).decode()
+
+        # Detect format from extension
+        ext = audio_path.rsplit(".", 1)[-1].lower()
+        mime = {"ogg": "audio/ogg", "mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4"}.get(ext, "audio/ogg")
+
+        payload = {
+            "model": settings.vllm_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "audio_url",
+                            "audio_url": {"url": f"data:{mime};base64,{audio_b64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Transcribe exactly what is said in this audio. "
+                                "The speaker is in Spanish (Colombian). "
+                                "Return ONLY the verbatim transcription, no explanations."
+                            ),
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0.0,
+            "max_tokens": 512,
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{settings.vllm_base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {settings.vllm_api_key}"},
+                json=payload,
+            )
             resp.raise_for_status()
-            return resp.json()["text"]
+            return resp.json()["choices"][0]["message"]["content"].strip()
 
     async def _handle_tts(self, data: dict):
         """Genera audio con Edge-TTS."""
@@ -158,7 +185,7 @@ class AudioAgent(BaseAgent):
 
         try:
             audio_path = await self._download_telegram_file(file_id)
-            transcript = await self._transcribe_whisper(audio_path)
+            transcript = await self._transcribe_gemma(audio_path)
 
             await self.bus.publish("ponencia:analyzed", {
                 "bancada_id": bancada_id,
@@ -191,20 +218,14 @@ class AudioAgent(BaseAgent):
 
     async def _pregenerate_tts(self):
         """Pre-genera audios al iniciar."""
-        from core.bombs import BOMBS
-
-        items = []
-        for bomb_id, bomb in BOMBS.items():
-            items.append((f"bomba_{bomb_id}", bomb["text"]))
-
-        items.extend([
+        items = [
             ("fase_ponencia", "Fase de ponencia del alcalde. Escuchen al proponente."),
             ("fase_debate", "Fase de debate abierto. Las bancadas tienen la palabra."),
             ("fase_votacion", "Fase de votación. Emitan su voto."),
             ("timer_5min", "Quedan 5 minutos."),
             ("timer_1min", "Queda 1 minuto."),
             ("timer_fin", "Tiempo agotado."),
-        ])
+        ]
 
         voice = TTS_VOICES["broadcast"]
         for name, text in items:

@@ -69,10 +69,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; colo
 .news-body { font-size: 13px; color: #ccc; line-height: 1.4; }
 
 /* === DASHBOARD PANEL === */
-.kpi-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-.kpi { background: #1a2a1a; border: 1px solid #2d5016; border-radius: 8px; padding: 8px 12px; flex: 1; min-width: 80px; text-align: center; }
-.kpi-value { font-size: 20px; font-weight: bold; color: #7ec850; }
-.kpi-label { font-size: 10px; color: #888; text-transform: uppercase; }
+.kpi-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: nowrap; }
+.kpi { background: #1a2a1a; border: 1px solid #2d5016; border-radius: 6px; padding: 6px 8px; flex: 1; min-width: 60px; text-align: center; }
+.kpi-value { font-size: 18px; font-weight: bold; color: #7ec850; }
+.kpi-label { font-size: 9px; color: #888; text-transform: uppercase; }
 .bancada-bar { margin-bottom: 6px; }
 .bancada-bar .label { font-size: 12px; margin-bottom: 2px; }
 .bancada-bar .bar { height: 20px; background: #222; border-radius: 3px; overflow: hidden; position: relative; }
@@ -433,6 +433,12 @@ function changeLayout(mode) {
 }
 
 // === Leaderboard ===
+function updateStats(data) {
+    if (data.users !== undefined) document.getElementById(kpi-users).textContent = data.users;
+    if (data.queries !== undefined) document.getElementById(kpi-queries).textContent = data.queries;
+    if (data.proposals !== undefined) document.getElementById(kpi-proposals).textContent = data.proposals;
+}
+
 function updateLeaderboard(data) {
     // Could show in dashboard panel
 }

@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 
-from core.config import BANCADAS
+from core.config import BANCADAS, settings
 from db.database import get_session
 
 logger = logging.getLogger("handlers.negotiation")
@@ -92,10 +92,76 @@ async def handle_negociar(agent, user_id: int, chat_id: int, args: str):
 
     # Notify admin
     await agent.bus.stream_add("telegram:outgoing", {
-        "chat_id": str(agent.bus.redis and settings.admin_chat_id if hasattr(agent, 'bus') else ""),
+        "chat_id": str(settings.admin_chat_id),
         "text": (
             f"Negociación #{neg_id} abierta: "
             f"{BANCADAS[initiator['bancada_id']]['nombre']} ↔ {target_name}"
+        ),
+        "parse_mode": "Markdown",
+    })
+
+
+async def handle_msg_negociacion(agent, user_id: int, chat_id: int, args: str):
+    """Envía mensaje a la contraparte de una negociación."""
+    parts = (args or "").strip().split(" ", 1)
+    if len(parts) < 2 or not parts[0].isdigit():
+        await agent._send_response(chat_id, "Uso: /msg_negociacion <número> <mensaje>")
+        return
+
+    neg_id = int(parts[0])
+    msg_text = parts[1].strip()
+    if not msg_text:
+        await agent._send_response(chat_id, "El mensaje no puede estar vacío.")
+        return
+
+    async with get_session() as session:
+        from sqlalchemy import text as sql_text
+
+        result = await session.execute(
+            sql_text("SELECT * FROM negotiations WHERE id = :nid"),
+            {"nid": neg_id},
+        )
+        neg = result.mappings().first()
+        if not neg:
+            await agent._send_response(chat_id, f"No existe la negociación #{neg_id}.")
+            return
+
+        # Determine who the counterpart is
+        if user_id == neg["iniciador_id"]:
+            counterpart_id = neg["receptor_id"]
+        elif user_id == neg["receptor_id"]:
+            counterpart_id = neg["iniciador_id"]
+        else:
+            await agent._send_response(chat_id, "No participas en esa negociación.")
+            return
+
+        # Fetch sender info
+        result = await session.execute(
+            sql_text("SELECT nombre_completo, bancada_id FROM users WHERE telegram_id = :tid"),
+            {"tid": user_id},
+        )
+        sender = result.mappings().first()
+        sender_name = sender["nombre_completo"] if sender else str(user_id)
+        bancada_name = BANCADAS.get(sender["bancada_id"], {}).get("nombre", "?") if sender else "?"
+
+        # Log message in DB
+        await session.execute(
+            sql_text(
+                "INSERT INTO negotiation_messages (negotiation_id, sender_id, message) "
+                "VALUES (:nid, :sid, :msg)"
+            ),
+            {"nid": neg_id, "sid": user_id, "msg": msg_text},
+        )
+
+    await agent._send_response(chat_id, f"Mensaje enviado a la contraparte (Neg. #{neg_id}).")
+
+    await agent.bus.stream_add("telegram:outgoing", {
+        "chat_id": str(counterpart_id),
+        "text": (
+            f"📩 *Mensaje de negociación #{neg_id}*\n\n"
+            f"De: {sender_name} ({bancada_name})\n\n"
+            f"{msg_text}\n\n"
+            f"Responde con /msg_negociacion {neg_id} <tu respuesta>"
         ),
         "parse_mode": "Markdown",
     })

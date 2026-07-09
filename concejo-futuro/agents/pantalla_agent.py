@@ -23,7 +23,7 @@ ws_clients: set[WebSocket] = set()
 event_history: list[dict] = []
 
 ALL_CHANNELS = [
-    "broadcast:sent", "bomb:sent", "fakenews:sent",
+    "broadcast:sent",
     "alert:sent", "tweet:new", "position:changed",
     "vote:cast", "proposal:new", "timer:update",
     "gabinete:event", "pressure:sent", "ponencia:analyzed",
@@ -33,7 +33,7 @@ ALL_CHANNELS = [
 
 # Channels worth persisting for replay on page reload
 PERSIST_CHANNELS = {
-    "tweet:new", "broadcast:sent", "bomb:sent", "fakenews:sent",
+    "tweet:new", "broadcast:sent",
     "alert:sent", "pressure:sent", "vote:cast", "proposal:new",
     "gabinete:event",
 }

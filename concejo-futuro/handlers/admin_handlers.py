@@ -153,80 +153,6 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
         })
         await agent._send_response(chat_id, "Broadcast enviado.")
 
-    elif cmd == "bomba":
-        from core.bombs import BOMBS
-        if not args.strip():
-            # Show bomb menu
-            keyboard = []
-            for bid, bomb in BOMBS.items():
-                # First 60 chars as label
-                label = bomb["text"].replace("*", "").replace("🔴 ", "")[:55]
-                keyboard.append([{"text": f"💣 {bid}. {label}…", "callback_data": f"preview_bomb_{bid}"}])
-            await agent.bus.stream_add("telegram:outgoing", {
-                "chat_id": str(chat_id),
-                "text": "💣 *Selecciona una bomba informativa:*",
-                "parse_mode": "Markdown",
-                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
-            })
-            return
-        try:
-            bomb_id = int(args.strip())
-        except ValueError:
-            await agent._send_response(chat_id, "Uso: /bomba o /bomba <1-8>")
-            return
-        # Show preview with confirm button
-        bomb = BOMBS.get(bomb_id)
-        if not bomb:
-            await agent._send_response(chat_id, f"Bomba #{bomb_id} no existe (1-8).")
-            return
-        preview = bomb["text"][:500].replace("*", "")
-        keyboard = json.dumps({"inline_keyboard": [
-            [{"text": "✅ Enviar", "callback_data": f"send_bomb_{bomb_id}"},
-             {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
-        ]})
-        await agent.bus.stream_add("telegram:outgoing", {
-            "chat_id": str(chat_id),
-            "text": f"💣 *Preview Bomba #{bomb_id}:*\n\n{preview}\n\n_Se enviará a todos los concejales + pantalla._",
-            "parse_mode": "Markdown",
-            "reply_markup": keyboard,
-        })
-
-    elif cmd == "fakenews":
-        from core.fakenews import FAKE_NEWS
-        if not args.strip():
-            # Show fakenews menu
-            keyboard = []
-            for nid, news in FAKE_NEWS.items():
-                label = news["text"].replace("*", "").replace("📰 ", "")[:55]
-                keyboard.append([{"text": f"📰 {nid}. {label}…", "callback_data": f"preview_fn_{nid}"}])
-            await agent.bus.stream_add("telegram:outgoing", {
-                "chat_id": str(chat_id),
-                "text": "📰 *Selecciona una fake news:*",
-                "parse_mode": "Markdown",
-                "reply_markup": json.dumps({"inline_keyboard": keyboard}),
-            })
-            return
-        try:
-            news_id = int(args.strip())
-        except ValueError:
-            await agent._send_response(chat_id, "Uso: /fakenews o /fakenews <1-6>")
-            return
-        news = FAKE_NEWS.get(news_id)
-        if not news:
-            await agent._send_response(chat_id, f"Fake news #{news_id} no existe (1-6).")
-            return
-        preview = news["text"][:500].replace("*", "")
-        keyboard = json.dumps({"inline_keyboard": [
-            [{"text": "✅ Enviar", "callback_data": f"send_fn_{news_id}"},
-             {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
-        ]})
-        await agent.bus.stream_add("telegram:outgoing", {
-            "chat_id": str(chat_id),
-            "text": f"📰 *Preview Fake News #{news_id}:*\n\n{preview}\n\n_Se enviará a todos los concejales + pantalla._",
-            "parse_mode": "Markdown",
-            "reply_markup": keyboard,
-        })
-
     elif cmd == "presion":
         if not args.strip():
             await _show_draft_preview(agent, chat_id, chat_id, "presion")
@@ -546,6 +472,158 @@ async def handle_admin_command(agent, command: str, args: str, chat_id: int):
     elif cmd == "reset_debate":
         await handle_reset_debate(agent, chat_id)
 
+    elif cmd == "eventos":
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("SELECT id, nombre, tipo, is_active FROM eventos ORDER BY id")
+            )
+            rows = list(result.mappings())
+        if not rows:
+            await agent._send_response(chat_id, "No hay eventos configurados.")
+            return
+        lines = ["*Escenarios configurados:*\n"]
+        for r in rows:
+            estado = "✅ activo" if r["is_active"] else "⏸ inactivo"
+            lines.append(f"`{r['id']}` — {r['nombre']} ({r['tipo']}) — {estado}")
+        lines.append("\nUsa `/activar_evento <id>` o `/crear_evento <nombre>|<tipo>|<proyecto>`")
+        await agent._send_response(chat_id, "\n".join(lines))
+
+    elif cmd == "activar_evento":
+        try:
+            eid = int(args.strip())
+        except ValueError:
+            await agent._send_response(chat_id, "Uso: /activar_evento <id>")
+            return
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("UPDATE eventos SET is_active = true WHERE id = :eid RETURNING nombre"),
+                {"eid": eid},
+            )
+            row = result.mappings().first()
+        if row:
+            await agent._send_response(chat_id, f"✅ Evento *{row['nombre']}* activado.")
+        else:
+            await agent._send_response(chat_id, f"No encontré evento con id {eid}.")
+
+    elif cmd == "desactivar_evento":
+        try:
+            eid = int(args.strip())
+        except ValueError:
+            await agent._send_response(chat_id, "Uso: /desactivar_evento <id>")
+            return
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("UPDATE eventos SET is_active = false WHERE id = :eid RETURNING nombre"),
+                {"eid": eid},
+            )
+            row = result.mappings().first()
+        if row:
+            await agent._send_response(chat_id, f"⏸ Evento *{row['nombre']}* desactivado.")
+        else:
+            await agent._send_response(chat_id, f"No encontré evento con id {eid}.")
+
+    elif cmd == "crear_evento":
+        # Format: /crear_evento Nombre del evento|tipo|Proyecto de prueba
+        parts_ev = args.split("|")
+        if len(parts_ev) < 2:
+            await agent._send_response(
+                chat_id,
+                "Uso: `/crear_evento Nombre|tipo|Nombre proyecto`\n"
+                "Tipos: concejo, asamblea, congreso"
+            )
+            return
+        nombre = parts_ev[0].strip()
+        tipo = parts_ev[1].strip()
+        proyecto = parts_ev[2].strip() if len(parts_ev) > 2 else "Proyecto de Acuerdo"
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text(
+                    "INSERT INTO eventos (nombre, tipo, proyecto_nombre) "
+                    "VALUES (:n, :t, :p) RETURNING id"
+                ),
+                {"n": nombre, "t": tipo, "p": proyecto},
+            )
+            new_id = result.scalar()
+        await agent._send_response(
+            chat_id,
+            f"✅ Evento creado: *{nombre}* (id={new_id})\n"
+            f"Tipo: {tipo} | Proyecto: {proyecto}\n\n"
+            f"Usa `/activar_evento {new_id}` para habilitarlo."
+        )
+
+    elif cmd == "switch_evento":
+        # Format: /switch_evento TELEGRAM_ID <nombre parcial del evento>
+        # e.g. /switch_evento 5272332343 asamblea cundinamarca
+        parts_sw = args.split(None, 1)
+        if len(parts_sw) < 2:
+            await agent._send_response(
+                chat_id,
+                "Uso: `/switch_evento <telegram_id> <nombre del evento>`\n"
+                "Ejemplo: `/switch_evento 5272332343 asamblea cundinamarca`\n\n"
+                "Usa /eventos para ver los nombres disponibles."
+            )
+            return
+        try:
+            target_tid = int(parts_sw[0])
+        except ValueError:
+            await agent._send_response(chat_id, "El primer argumento debe ser el Telegram ID (número).")
+            return
+        nombre_busqueda = parts_sw[1].strip()
+
+        # Buscar evento por nombre (búsqueda parcial, insensible a mayúsculas)
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            ev_result = await session.execute(
+                sql_text(
+                    "SELECT id, nombre FROM eventos "
+                    "WHERE is_active = true AND LOWER(nombre) LIKE :pat "
+                    "ORDER BY id LIMIT 1"
+                ),
+                {"pat": f"%{nombre_busqueda.lower()}%"},
+            )
+            evento = ev_result.mappings().first()
+
+        if not evento:
+            await agent._send_response(
+                chat_id,
+                f"No encontré un evento activo con el nombre *{nombre_busqueda}*.\n"
+                "Usa /eventos para ver los nombres disponibles."
+            )
+            return
+        target_eid = evento["id"]
+
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text(
+                    "UPDATE users SET evento_id = :eid, "
+                    "onboarding_complete = false, onboarding_step = 1, "
+                    "municipio = '', provincia = '', bancada_id = 1, bancada_nombre = '' "
+                    "WHERE telegram_id = :tid RETURNING nombre_completo"
+                ),
+                {"eid": target_eid, "tid": target_tid},
+            )
+            row = result.mappings().first()
+        if row:
+            await agent._send_response(
+                chat_id,
+                f"✅ *{row['nombre_completo']}* movido a *{evento['nombre']}*.\n"
+                f"Deberá completar el onboarding del nuevo escenario."
+            )
+            await agent.bus.stream_add("telegram:outgoing", {
+                "chat_id": str(target_tid),
+                "text": (
+                    f"🔄 El administrador te cambió al escenario *{evento['nombre']}*.\n"
+                    "Envía /start para completar tu registro."
+                ),
+            })
+        else:
+            await agent._send_response(chat_id, f"No encontré usuario {target_tid}.")
+
     else:
         await agent._send_response(chat_id, f"Comando admin no reconocido: {cmd}")
 
@@ -654,46 +732,9 @@ async def handle_approval_callback(agent, user_id: int, chat_id: int, data: str,
 
 
 async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, callback_id: str):
-    """Procesa callbacks de preview/send/cancel de bombas, fakenews, tweets."""
+    """Procesa callbacks de preview/send/cancel de tweets y acciones admin."""
     if data == "cancel_action":
         await agent._send_response(chat_id, "Acción cancelada.")
-        return
-
-    # Preview callbacks: show full content + confirm button
-    if data.startswith("preview_bomb_"):
-        bomb_id = int(data.split("_")[-1])
-        from core.bombs import BOMBS
-        bomb = BOMBS.get(bomb_id)
-        if bomb:
-            preview = bomb["text"].replace("*", "")[:500]
-            keyboard = json.dumps({"inline_keyboard": [
-                [{"text": "✅ Enviar", "callback_data": f"send_bomb_{bomb_id}"},
-                 {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
-            ]})
-            await agent.bus.stream_add("telegram:outgoing", {
-                "chat_id": str(chat_id),
-                "text": f"💣 *Preview Bomba #{bomb_id}:*\n\n{preview}\n\n_Se enviará a todos + pantalla con tweets de reacción._",
-                "parse_mode": "Markdown",
-                "reply_markup": keyboard,
-            })
-        return
-
-    if data.startswith("preview_fn_"):
-        news_id = int(data.split("_")[-1])
-        from core.fakenews import FAKE_NEWS
-        news = FAKE_NEWS.get(news_id)
-        if news:
-            preview = news["text"].replace("*", "")[:500]
-            keyboard = json.dumps({"inline_keyboard": [
-                [{"text": "✅ Enviar", "callback_data": f"send_fn_{news_id}"},
-                 {"text": "❌ Cancelar", "callback_data": "cancel_action"}],
-            ]})
-            await agent.bus.stream_add("telegram:outgoing", {
-                "chat_id": str(chat_id),
-                "text": f"📰 *Preview Fake News #{news_id}:*\n\n{preview}\n\n_Se enviará a todos + pantalla con tweets de reacción._",
-                "parse_mode": "Markdown",
-                "reply_markup": keyboard,
-            })
         return
 
     if data.startswith("preview_tweet_"):
@@ -711,25 +752,6 @@ async def handle_admin_callback(agent, user_id: int, chat_id: int, data: str, ca
                 "parse_mode": "Markdown",
                 "reply_markup": keyboard,
             })
-        return
-
-    # Send callbacks: execute the action
-    if data.startswith("send_bomb_"):
-        bomb_id = int(data.split("_")[-1])
-        await agent.bus.publish("control:command", {
-            "action": "bomb",
-            "args": {"bomb_id": bomb_id},
-        })
-        await agent._send_response(chat_id, f"💣 Bomba #{bomb_id} enviada a todos los concejales + pantalla.")
-        return
-
-    if data.startswith("send_fn_"):
-        news_id = int(data.split("_")[-1])
-        await agent.bus.publish("control:command", {
-            "action": "fakenews",
-            "args": {"news_id": news_id},
-        })
-        await agent._send_response(chat_id, f"📰 Fake news #{news_id} enviada a todos los concejales + pantalla.")
         return
 
     if data in ("send_draft_broadcast", "send_draft_presion"):
@@ -1093,16 +1115,23 @@ async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
             )
             concejales = [row[0] for row in result.fetchall()]
 
+        import json as _json
         for tid in concejales:
             await agent.bus.stream_add("telegram:outgoing", {
                 "chat_id": str(tid),
                 "text": (
                     "🗳️ *FASE DE VOTACIÓN ABIERTA*\n\n"
-                    "Es hora de votar el Proyecto de Acuerdo SIADR.\n\n"
-                    "Usa: `/votar_proyecto a_favor`, `en_contra` o `abstencion`\n\n"
-                    "Tu voto es secreto y personal."
+                    "Es hora de votar el Proyecto de Acuerdo 001-2026 — SIADR.\n\n"
+                    "Selecciona tu voto con los botones:"
                 ),
                 "parse_mode": "Markdown",
+                "reply_markup": _json.dumps({
+                    "inline_keyboard": [[
+                        {"text": "✅ A favor", "callback_data": "vote_proyecto_si"},
+                        {"text": "❌ En contra", "callback_data": "vote_proyecto_no"},
+                        {"text": "⚪ Abstención", "callback_data": "vote_proyecto_abstencion"},
+                    ]]
+                }),
             })
 
         await agent._send_response(

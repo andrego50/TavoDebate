@@ -2,9 +2,9 @@
 
 ## Descripción General
 
-**TavoDebate** es un sistema multi-agente para simulaciones legislativas interactivas. Diseñado para un taller donde 150 concejales reales de Cundinamarca debaten un proyecto de ordenanza ficticio: el **SIADR** (Sistema Inteligente de Asignación de Recursos para el Desarrollo Rural).
+**TavoDebate** es un sistema multi-agente para simulaciones legislativas interactivas. Soporta múltiples escenarios simultáneos (Concejo Municipal y Asamblea Departamental) con participantes de distintos roles: concejales, alcalde, diputados, líderes campesinos, contralor, personero y otros.
 
-Los participantes interactúan vía **Telegram** con un bot que simula un debate legislativo completo, incluyendo fases de ponencia, preguntas, investigación, debate, enmiendas y votación.
+Los participantes interactúan vía **Telegram** con un bot que simula un debate legislativo completo, incluyendo fases de ponencia, preguntas, investigación, debate, enmiendas y votación. El sistema soporta texto, voz e imágenes (multimodal via Gemma 4).
 
 ---
 
@@ -18,12 +18,14 @@ Los participantes interactúan vía **Telegram** con un bot que simula un debate
 | Message bus | Redis 7 (Streams + Pub/Sub) |
 | LLM primario | vLLM local — Gemma 4 12B QAT (`google/gemma-4-12B-it-qat-w4a16-ct`) en `192.168.0.221:9090` |
 | LLM fallback | DeepSeek (pendiente API key) |
-| Transcripción | OpenAI Whisper API |
+| Transcripción de voz | Gemma 4 multimodal vía vLLM (audio OGG/MP3) |
+| Reconocimiento de imágenes | Gemma 4 multimodal vía vLLM (fotos Telegram) |
 | Text-to-Speech | Edge-TTS (voces colombianas) |
 | Dashboard | Streamlit |
 | Pantalla proyector | HTML + WebSocket |
 | Geodashboard | HTML + Leaflet + Chart.js |
 | Contenedores | Docker Compose |
+| Tests | pytest + NullPool asyncpg (21 tests) |
 
 ---
 
@@ -95,6 +97,9 @@ Los participantes interactúan vía **Telegram** con un bot que simula un debate
 
 ```
 concejo-futuro/
+├── tests/                     # Suite de pruebas (21 tests)
+│   ├── conftest.py            # NullPool engine patch para asyncio
+│   └── test_sistema_completo.py  # Onboarding, comandos, votación, admin, LLM quality
 ├── agents/                    # Agentes del sistema
 │   ├── base_agent.py          # Clase base con Redis + health
 │   ├── runner.py              # Entry point (selecciona agente por AGENT_TYPE)
@@ -246,12 +251,14 @@ Un preámbulo explícito instruye al LLM a cruzar-referenciar ese bloque antes d
 
 ## Base de Datos
 
-18+ tablas en PostgreSQL 16:
+20+ tablas en PostgreSQL 16:
 
-- `users` — Concejales registrados (nombre, bancada, provincia, municipio, voz)
+- `users` — Participantes registrados (nombre, bancada, provincia, municipio, voz, **rol**, **evento_id**)
+- `eventos` — Escenarios de simulación activos (Concejo Fusagasugá, Asamblea Cundinamarca, etc.)
 - `interactions` — Todas las interacciones con clasificación LLM
-- `proposals` — Enmiendas propuestas por concejales
+- `proposals` — Enmiendas propuestas
 - `votes` / `voting_sessions` — Votaciones nominales
+- `user_long_term_profiles` — Memoria persistente entre sesiones por participante
 - `bancada_state` — Estado por bancada (cohesión, posición, actividad)
 - `debate_state` — Estado global del debate (fase, temperatura, tema)
 - `intelligence_reports` — Briefings generados por Intel Agent
@@ -263,6 +270,14 @@ Un preámbulo explícito instruye al LLM a cruzar-referenciar ese bloque antes d
 - `fakenews_impact` — Impacto de fake news por usuario
 
 Vistas: `bancada_summary`, `active_users`, `vote_results`, `tema_distribution`
+
+### Multi-escenario (`eventos`)
+
+El sistema soporta múltiples escenarios de simulación independientes en la misma base de datos. Cada usuario tiene `evento_id` que lo vincula a un escenario específico. El onboarding muestra un selector de evento cuando hay más de uno activo.
+
+Escenarios de prueba pre-configurados:
+- **Concejo Municipal de Fusagasugá** (id=1) — 17 concejales reales
+- **Asamblea Departamental de Cundinamarca** (id=2) — 16 diputados reales
 
 ---
 
@@ -327,6 +342,11 @@ Vistas: `bancada_summary`, `active_users`, `vote_results`, `tema_distribution`
 - `/broadcast <texto>` — Envía mensaje a todos
 - `/bomba <N>` — Dispara bomba informativa
 - `/fakenews <N>` — Inserta fake news
+- `/eventos` — Lista todos los eventos/escenarios con estado
+- `/activar_evento <id>` — Activa un escenario
+- `/desactivar_evento <id>` — Desactiva un escenario
+- `/crear_evento <nombre>` — Crea un nuevo escenario de simulación
+- `/switch_evento <telegram_id> <nombre_parcial>` — Cambia el evento de un usuario (e.g. `/switch_evento 123456 asamblea cundinamarca`)
 
 ---
 

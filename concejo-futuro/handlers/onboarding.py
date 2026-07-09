@@ -196,6 +196,16 @@ FASES = {
 }
 
 
+async def _get_active_events() -> list[dict]:
+    """Devuelve lista de eventos activos ordenados por id."""
+    from sqlalchemy import text as sql_text
+    async with get_session() as session:
+        result = await session.execute(
+            sql_text("SELECT id, nombre, tipo FROM eventos WHERE is_active = true ORDER BY id")
+        )
+        return [dict(r) for r in result.mappings()]
+
+
 async def handle_start(agent, user_id: int, chat_id: int, username: str, first_name: str):
     """Inicia el onboarding o muestra perfil si ya está registrado."""
     # Admin/dinamizador: skip onboarding entirely
@@ -238,8 +248,6 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
             "/fase votacion — Abrir votación\n\n"
             "*Control:*\n"
             "/broadcast <msg> — Mensaje a todos\n"
-            "/bomba <msg> — Bomba informativa\n"
-            "/fakenews <msg> — Fake news\n"
             "/ronda <min> — Timer de N minutos\n"
             "/tweet <texto> — Tweet simulado\n"
             "/alerta <msg> — Alerta visual\n\n"
@@ -281,43 +289,69 @@ async def handle_start(agent, user_id: int, chat_id: int, username: str, first_n
     pin = await redis.get("tavodebate:access_pin")
     await redis.aclose()
 
+    # Check active events
+    active_events = await _get_active_events()
+
     if pin:
-        # PIN is active — start at step 0 (PIN verification)
         start_step = 0
-        msg = (
-            "🏛️ *Bienvenido al Gran Concejo del Futuro — TavoDebate*\n\n"
-            "Soy tu asistente de IA para la simulación legislativa sobre el "
-            "proyecto SIADR de Cundinamarca.\n\n"
-            "🔐 *Ingresa el código de acceso (4 dígitos):*"
-        )
+    elif len(active_events) > 1:
+        start_step = -1  # Selector de evento
     else:
-        # No PIN — go straight to step 1
         start_step = 1
-        msg = (
-            "🏛️ *Bienvenido al Gran Concejo del Futuro — TavoDebate*\n\n"
-            "Soy tu asistente de IA para la simulación legislativa sobre el "
-            "proyecto SIADR de Cundinamarca.\n\n"
-            "*Paso 1 de 5:* ¿Cuál es tu nombre completo?"
-        )
 
     # Create user record
     async with get_session() as session:
         from sqlalchemy import text as sql_text
+        # Auto-assign evento_id if only one active event
+        auto_evento = active_events[0]["id"] if len(active_events) == 1 else None
         if not user:
             await session.execute(
                 sql_text(
                     "INSERT INTO users (telegram_id, username, nombre_completo, municipio, "
-                    "provincia, bancada_id, bancada_nombre, onboarding_step) "
-                    "VALUES (:tid, :un, '', '', '', 1, '', :step) "
+                    "provincia, bancada_id, bancada_nombre, onboarding_step, evento_id) "
+                    "VALUES (:tid, :un, '', '', '', 1, '', :step, :eid) "
                     "ON CONFLICT (telegram_id) DO UPDATE SET onboarding_step = :step"
                 ),
-                {"tid": user_id, "un": username or "", "step": start_step},
+                {"tid": user_id, "un": username or "", "step": max(start_step, 0), "eid": auto_evento},
             )
         else:
             await session.execute(
                 sql_text("UPDATE users SET onboarding_step = :step WHERE telegram_id = :tid"),
-                {"step": start_step, "tid": user_id},
+                {"step": max(start_step, 0), "tid": user_id},
             )
+
+    if start_step == -1:
+        # Show event selector
+        tipo_icon = {"concejo": "🏛️", "asamblea": "🏢", "congreso": "🇨🇴"}
+        keyboard = [
+            [{"text": f"{tipo_icon.get(e['tipo'], '🏛️')} {e['nombre']}", "callback_data": f"onboard_evento_{e['id']}"}]
+            for e in active_events
+        ]
+        await agent.bus.stream_add("telegram:outgoing", {
+            "chat_id": str(chat_id),
+            "text": (
+                "🏛️ *Bienvenido a TavoDebate*\n\n"
+                "Soy tu asistente de IA para la simulación legislativa.\n\n"
+                "*¿A qué escenario te unes?*"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({"inline_keyboard": keyboard}),
+        })
+        return
+
+    if pin:
+        msg = (
+            "🏛️ *Bienvenido a TavoDebate*\n\n"
+            "Soy tu asistente de IA para la simulación legislativa.\n\n"
+            "🔐 *Ingresa el código de acceso (4 dígitos):*"
+        )
+    else:
+        evento_nombre = active_events[0]["nombre"] if active_events else "el Concejo"
+        msg = (
+            f"🏛️ *Bienvenido a TavoDebate — {evento_nombre}*\n\n"
+            "Soy tu asistente de IA para la simulación legislativa.\n\n"
+            "*Paso 1 de 5:* ¿Cuál es tu nombre completo?"
+        )
 
     await agent._send_response(chat_id, msg)
 
@@ -329,6 +363,49 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
         return
 
     step = parts[1]
+
+    if step == "evento":
+        # User selected which event/scenario to join
+        evento_id = int(parts[2])
+        async with get_session() as session:
+            from sqlalchemy import text as sql_text
+            result = await session.execute(
+                sql_text("SELECT nombre, tipo FROM eventos WHERE id = :eid AND is_active = true"),
+                {"eid": evento_id},
+            )
+            evento = result.mappings().first()
+            if not evento:
+                await agent._send_response(chat_id, "Escenario no disponible. Intenta de nuevo.")
+                return
+            # Save evento_id and advance to name step
+            await session.execute(
+                sql_text(
+                    "UPDATE users SET evento_id = :eid, onboarding_step = 1 "
+                    "WHERE telegram_id = :tid"
+                ),
+                {"eid": evento_id, "tid": user_id},
+            )
+
+        # Check PIN
+        import redis.asyncio as aioredis
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+        pin = await redis.get("tavodebate:access_pin")
+        await redis.aclose()
+
+        if pin:
+            async with get_session() as session:
+                from sqlalchemy import text as sql_text
+                await session.execute(
+                    sql_text("UPDATE users SET onboarding_step = 0 WHERE telegram_id = :tid"),
+                    {"tid": user_id},
+                )
+            await agent._send_response(chat_id, f"*{evento['nombre']}*\n\n🔐 Ingresa el código de acceso:")
+        else:
+            await agent._send_response(
+                chat_id,
+                f"*{evento['nombre']}*\n\n*Paso 1 de 5:* ¿Cuál es tu nombre completo?"
+            )
+        return
 
     if step == "grupo":
         grupo_key = parts[2]

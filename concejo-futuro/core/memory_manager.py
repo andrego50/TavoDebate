@@ -98,87 +98,84 @@ async def _get_live_context(user: dict, bancada_id: int, session) -> str:
         import redis.asyncio as aioredis
         from core.config import settings
         r = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            # Current phase
+            phase = await r.get("current_phase")
+            if phase:
+                parts.append(f"--- FASE ACTUAL ---\n{phase}")
 
-        # Current phase
-        phase = await r.get("current_phase")
-        if phase:
-            parts.append(f"--- FASE ACTUAL ---\n{phase}")
-
-        # Last open voting session
-        last_vote_res = await session.execute(
-            sql_text(
-                "SELECT description, is_open, results FROM voting_sessions "
-                "ORDER BY id DESC LIMIT 1"
+            # Last open voting session
+            last_vote_res = await session.execute(
+                sql_text(
+                    "SELECT description, is_open, results FROM voting_sessions "
+                    "ORDER BY id DESC LIMIT 1"
+                )
             )
-        )
-        lv = last_vote_res.mappings().first()
-        if lv:
-            if lv["is_open"]:
-                parts.append(
-                    f"--- VOTACIÓN EN CURSO ---\n{lv['description']}"
-                )
-            elif lv["results"]:
-                res = lv["results"] if isinstance(lv["results"], dict) else json.loads(lv["results"])
-                parts.append(
-                    f"--- ÚLTIMA VOTACIÓN ---\n"
-                    f"{res.get('resultado', '?')} — "
-                    f"sí {res.get('si', 0)} / no {res.get('no', 0)} / abs {res.get('abstencion', 0)}"
-                )
+            lv = last_vote_res.mappings().first()
+            if lv:
+                if lv["is_open"]:
+                    parts.append(
+                        f"--- VOTACIÓN EN CURSO ---\n{lv['description']}"
+                    )
+                elif lv["results"]:
+                    res = lv["results"] if isinstance(lv["results"], dict) else json.loads(lv["results"])
+                    parts.append(
+                        f"--- ÚLTIMA VOTACIÓN ---\n"
+                        f"{res.get('resultado', '?')} — "
+                        f"sí {res.get('si', 0)} / no {res.get('no', 0)} / abs {res.get('abstencion', 0)}"
+                    )
 
-        # Recent tweets (last 6) — already JSON-serialized in chat_agent
-        raw_tweets = await r.lrange("tavodebate:recent_tweets", 0, 5)
-        tweets = []
-        for raw in raw_tweets:
-            try:
-                t = json.loads(raw)
-                author = t.get("author", "?")
-                text = (t.get("text", "") or "")[:140].replace("\n", " ")
-                tid = t.get("tweet_id", "?")
-                marker = ""
-                if t.get("reply_to_id"):
-                    marker = f" ↪#{t['reply_to_id']}"
-                elif t.get("quote_to_id"):
-                    marker = f" 🔁#{t['quote_to_id']}"
-                tweets.append(f"#{tid} {author}{marker}: {text}")
-            except Exception:
-                continue
-        if tweets:
-            parts.append("--- TUITS RECIENTES EN PANTALLA ---\n" + "\n".join(tweets))
-
-        # Recent pantalla events: bombs, fakenews, alerts, pressure (last 15)
-        # pantalla_agent persists these to tavodebate:pantalla_history
-        raw_hist = await r.lrange("tavodebate:pantalla_history", -20, -1)
-        relevant_channels = {
-            "bomb:sent": "💣 BOMBA",
-            "fakenews:sent": "📰 FAKE NEWS",
-            "alert:sent": "🚨 ALERTA",
-            "pressure:sent": "📣 PRESIÓN",
-            "broadcast:sent": "📢 COMUNICADO",
-        }
-        news_lines = []
-        for raw in raw_hist:
-            try:
-                ev = json.loads(raw)
-                ch = ev.get("channel", "")
-                if ch not in relevant_channels:
+            # Recent tweets (last 6) — already JSON-serialized in chat_agent
+            raw_tweets = await r.lrange("tavodebate:recent_tweets", 0, 5)
+            tweets = []
+            for raw in raw_tweets:
+                try:
+                    t = json.loads(raw)
+                    author = t.get("author", "?")
+                    text = (t.get("text", "") or "")[:140].replace("\n", " ")
+                    tid = t.get("tweet_id", "?")
+                    marker = ""
+                    if t.get("reply_to_id"):
+                        marker = f" ↪#{t['reply_to_id']}"
+                    elif t.get("quote_to_id"):
+                        marker = f" 🔁#{t['quote_to_id']}"
+                    tweets.append(f"#{tid} {author}{marker}: {text}")
+                except Exception:
                     continue
-                data = ev.get("data", {}) or {}
-                msg = (
-                    data.get("message") or data.get("text") or
-                    data.get("title") or data.get("description") or ""
-                )
-                msg = msg[:180].replace("\n", " ")
-                if msg:
-                    news_lines.append(f"{relevant_channels[ch]}: {msg}")
-            except Exception:
-                continue
-        if news_lines:
-            parts.append(
-                "--- EVENTOS RECIENTES EN EL DEBATE ---\n"
-                + "\n".join(news_lines[-8:])
-            )
+            if tweets:
+                parts.append("--- TUITS RECIENTES EN PANTALLA ---\n" + "\n".join(tweets))
 
-        await r.aclose()
+            # Recent pantalla events: alerts, pressure, broadcasts (last 15)
+            raw_hist = await r.lrange("tavodebate:pantalla_history", -20, -1)
+            relevant_channels = {
+                "alert:sent": "🚨 ALERTA",
+                "pressure:sent": "📣 PRESIÓN",
+                "broadcast:sent": "📢 COMUNICADO",
+            }
+            news_lines = []
+            for raw in raw_hist:
+                try:
+                    ev = json.loads(raw)
+                    ch = ev.get("channel", "")
+                    if ch not in relevant_channels:
+                        continue
+                    data = ev.get("data", {}) or {}
+                    msg = (
+                        data.get("message") or data.get("text") or
+                        data.get("title") or data.get("description") or ""
+                    )
+                    msg = msg[:180].replace("\n", " ")
+                    if msg:
+                        news_lines.append(f"{relevant_channels[ch]}: {msg}")
+                except Exception:
+                    continue
+            if news_lines:
+                parts.append(
+                    "--- EVENTOS RECIENTES EN EL DEBATE ---\n"
+                    + "\n".join(news_lines[-8:])
+                )
+        finally:
+            await r.aclose()
     except Exception:
         pass
 
@@ -206,6 +203,25 @@ async def _get_live_context(user: dict, bancada_id: int, session) -> str:
         bancada_state = result.scalar()
         if bancada_state and bancada_state != "Sin actividad aún.":
             parts.append(f"--- ESTADO DE TU BANCADA ---\n{bancada_state}")
+    except Exception:
+        pass
+
+    # --- LONG-TERM PROFILE: accumulated across all sessions ---
+    try:
+        result = await session.execute(
+            sql_text(
+                "SELECT profile, sessions FROM user_long_term_profiles "
+                "WHERE telegram_id = :tid"
+            ),
+            {"tid": user.get("telegram_id")},
+        )
+        lt_row = result.mappings().first()
+        if lt_row and lt_row["profile"]:
+            parts.append(
+                f"--- PERFIL ACUMULADO DEL PARTICIPANTE ({lt_row['sessions']} sesiones) ---\n"
+                f"(Patrones detectados a lo largo de su historial completo)\n"
+                f"{lt_row['profile']}"
+            )
     except Exception:
         pass
 

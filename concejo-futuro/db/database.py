@@ -58,6 +58,33 @@ async def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS uniq_votes_user_target "
             "ON votes (telegram_id, vote_type, COALESCE(target_id, 0))"
         ))
+        # Tabla de memoria de largo plazo — sobrevive resets completos
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS user_long_term_profiles (
+                telegram_id BIGINT PRIMARY KEY,
+                profile     TEXT NOT NULL DEFAULT '',
+                sessions    INT  NOT NULL DEFAULT 0,
+                updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        # Tabla de eventos / escenarios de simulación independientes
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS eventos (
+                id              SERIAL PRIMARY KEY,
+                nombre          VARCHAR(200) NOT NULL,
+                tipo            VARCHAR(20) NOT NULL DEFAULT 'concejo',
+                proyecto_nombre VARCHAR(200) DEFAULT 'Proyecto de Acuerdo',
+                proyecto_desc   TEXT DEFAULT '',
+                municipio       VARCHAR(100) DEFAULT '',
+                provincia       VARCHAR(100) DEFAULT '',
+                is_active       BOOLEAN NOT NULL DEFAULT true,
+                created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        """))
+        # Evento_id en users para separar participantes por escenario
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS evento_id INTEGER REFERENCES eventos(id)"
+        ))
     logger.info("Database connection established")
 
 

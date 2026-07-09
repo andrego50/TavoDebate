@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime
 
 from agents.base_agent import BaseAgent
@@ -84,7 +85,6 @@ class IntelAgent(BaseAgent):
 
         try:
             # Strip markdown code fences that LLMs sometimes add
-            import re
             clean = re.sub(r'^```(?:json)?\s*', '', classification_text.strip())
             clean = re.sub(r'\s*```$', '', clean)
             classification = json.loads(clean)
@@ -236,7 +236,7 @@ class IntelAgent(BaseAgent):
         proposal_prompt = (
             "Basándote en el estado actual del debate, sugiere 1-2 acciones que Andrés "
             "podría tomar para dinamizar la discusión. Formato JSON:\n"
-            '[{"type": "broadcast|bomb|fakenews|pressure", "target": "all|bancada_N", '
+            '[{"type": "broadcast|pressure|alert", "target": "all|bancada_N", '
             '"message": "texto sugerido", "reason": "por qué"}]'
         )
 

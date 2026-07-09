@@ -48,6 +48,35 @@ Tú como dinamizador controlas las fases, lanzas eventos sorpresa y monitoreas l
 
 ---
 
+## Multi-escenario
+
+El sistema soporta múltiples escenarios de simulación simultáneos en la misma instancia. Esto permite correr un taller de **Concejo Municipal** y uno de **Asamblea Departamental** al mismo tiempo, con participantes completamente separados.
+
+### Escenarios pre-configurados
+
+| ID | Nombre | Tipo | Participantes |
+|----|--------|------|---------------|
+| 1 | Concejo Municipal de Fusagasugá | concejo | 17 concejales reales |
+| 2 | Asamblea Departamental de Cundinamarca | asamblea | 16 diputados reales |
+
+### Cómo funciona
+
+- Al hacer `/start`, si hay **más de un evento activo**, el bot muestra un selector con botones.
+- El participante elige su escenario y queda vinculado a él (`evento_id`).
+- Todos los comandos (estado, propuestas, votos) operan dentro del escenario del usuario.
+
+### Gestionar escenarios desde Telegram
+
+```
+/eventos                                    # Ver todos los escenarios
+/activar_evento 2                           # Activar Asamblea Cundinamarca
+/desactivar_evento 1                        # Ocultar Fusagasugá del selector
+/switch_evento 123456789 asamblea           # Mover un usuario a Asamblea
+/switch_evento 123456789 concejo fusagasuga # Mover a Fusagasugá
+```
+
+---
+
 ## Antes del evento
 
 ### 1. Verificar que el sistema está corriendo
@@ -363,6 +392,11 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
 | `/briefing` | Forzar briefing de inteligencia |
 | `/llm switch <proveedor>` | Cambiar proveedor LLM (deepseek/kimi) |
 | `/help` | Lista completa de comandos |
+| `/eventos` | Listar todos los escenarios de simulación activos/inactivos |
+| `/activar_evento <id>` | Activar un escenario (aparece en el selector de onboarding) |
+| `/desactivar_evento <id>` | Desactivar un escenario |
+| `/crear_evento <nombre>` | Crear un nuevo escenario de simulación |
+| `/switch_evento <telegram_id> <nombre>` | Mover un usuario a otro escenario (ej: `/switch_evento 123456 asamblea cundinamarca`) |
 
 ### Para los concejales
 
@@ -388,6 +422,8 @@ Los **no-concejales** obtienen bancada automática por grupo: Gobierno→1, Soci
 | `/votar_proyecto <voto>` | (solo `rol = concejal`) Votar a_favor / en_contra / abstencion |
 | `/mi_certificado` | Descargar certificado PDF |
 | Texto libre | Preguntar al asesor activo (responde según asesor + voz activa, puede buscar en web) |
+| Nota de voz | Enviar audio OGG/MP3 — Gemma 4 transcribe y procesa como texto |
+| Foto | Enviar imagen — Gemma 4 la analiza en contexto del debate legislativo. El caption se usa como pregunta. |
 
 ---
 
@@ -412,9 +448,9 @@ docker exec concejo-futuro-postgres-1 psql -U concejo -d concejo_futuro -c "
 ```
 
 ### Las respuestas tardan mucho (>20s)
-El LLM (DeepSeek) puede estar saturado. Opciones:
-- Cambiar a Kimi: `/llm kimi`
+El LLM (vLLM / Gemma 4 12B local) puede estar saturado. El modelo corre localmente en GPU.
 - Esperar — el sistema tiene cache, las preguntas repetidas son instantáneas
+- Verificar que vLLM esté corriendo: `curl http://192.168.0.221:9090/health`
 
 ### El geodashboard no carga
 Verificar que el contenedor pantalla está corriendo:

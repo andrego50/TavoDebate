@@ -80,8 +80,8 @@ def send_command(command: str, args: dict = None) -> bool:
 
 
 # --- Tabs ---
-tab_monitor, tab_control, tab_medios, tab_concejales, tab_crisis = st.tabs([
-    "📊 Monitor", "🎮 Control", "📸 Medios", "👥 Concejales", "📰 Sala de Crisis"
+tab_monitor, tab_control, tab_medios, tab_concejales = st.tabs([
+    "📊 Monitor", "🎮 Control", "📸 Medios", "👥 Concejales"
 ])
 
 # ===== TAB 1: MONITOR =====
@@ -175,28 +175,6 @@ with tab_control:
     if st.button("📢 Enviar a todos"):
         send_command("broadcast", {"message": broadcast_msg, "with_audio": broadcast_audio})
         st.success("Broadcast enviado")
-
-    st.divider()
-
-    # Bombs
-    st.subheader("💥 Datos Bomba")
-    bomb_cols = st.columns(4)
-    for i in range(1, 9):
-        col = bomb_cols[(i - 1) % 4]
-        if col.button(f"Bomba #{i}", key=f"bomb_{i}"):
-            send_command("bomba", {"bomb_id": i})
-            st.success(f"Bomba #{i} enviada")
-
-    st.divider()
-
-    # Fake News
-    st.subheader("📰 Fake News")
-    fn_cols = st.columns(3)
-    for i in range(1, 7):
-        col = fn_cols[(i - 1) % 3]
-        if col.button(f"FakeNews #{i}", key=f"fn_{i}"):
-            send_command("fakenews", {"news_id": i})
-            st.success(f"Fake news #{i} enviada")
 
     st.divider()
 
@@ -358,42 +336,6 @@ with tab_concejales:
     )
     for u in inactive:
         st.text(f"{u['nombre_completo']} ({u['municipio']}) — {u['bancada_nombre']} — {u['last_active']}")
-
-
-# ===== TAB 5: SALA DE CRISIS =====
-with tab_crisis:
-    st.title("📰 Sala de Crisis — Fake News")
-
-    # Timeline of broadcasts
-    st.subheader("Timeline de noticias")
-    broadcasts = query_db(
-        "SELECT created_at, type, subtype, content, reach "
-        "FROM broadcasts ORDER BY created_at DESC LIMIT 30"
-    )
-    for b in broadcasts:
-        icon = "📰" if b["type"] == "fakenews" else "📢"
-        st.text(f"{icon} [{b['created_at']}] {b['type']}: {b['content'][:100]}")
-
-    st.divider()
-
-    # Fake news impact
-    st.subheader("Impacto de fake news")
-    impact = query_db(
-        "SELECT fakenews_id, COUNT(*) as menciones, "
-        "COUNT(DISTINCT user_id) as concejales "
-        "FROM fakenews_impact GROUP BY fakenews_id ORDER BY menciones DESC"
-    )
-    if impact:
-        for i in impact:
-            st.metric(f"Fake News #{i['fakenews_id']}", f"{i['menciones']} menciones, {i['concejales']} concejales")
-
-    # Reveal button
-    st.divider()
-    if st.button("🎭 REVELAR TODAS LAS FAKE NEWS", type="primary"):
-        from core.fakenews import FAKE_NEWS
-        for news_id, news in FAKE_NEWS.items():
-            send_command("broadcast", {"message": news["reveal_text"]})
-        st.success("Todas las fake news reveladas")
 
 
 # Auto-refresh eliminado: los fragmentos del monitor y votación

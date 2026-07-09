@@ -164,6 +164,7 @@ body { font-family:'Inter',sans-serif; background:#0a0e1a; color:#e0e0e0; overfl
       <label class="layer-toggle"><input type="checkbox" id="layer-riesgo"> Zonas de Riesgo</label>
       <label class="layer-toggle"><input type="checkbox" id="layer-nbi"> Heatmap NBI</label>
       <label class="layer-toggle"><input type="checkbox" id="layer-votacion"> Votación en Vivo</label>
+      <label class="layer-toggle"><input type="checkbox" id="layer-interacciones" checked> 💬 Interacciones del Debate</label>
     </div>
 
     <!-- Controls -->
@@ -303,6 +304,15 @@ async function init() {
     DATA = null;
   }
 
+  // Load debate interacciones
+  try {
+    const resp2 = await fetch('data/interacciones_debate.json');
+    INTERACCIONES = await resp2.json();
+  } catch(e) {
+    console.warn('No interacciones data');
+    INTERACCIONES = null;
+  }
+
   if (!DATA) {
     document.body.innerHTML = '<h1 style="color:#e53935;text-align:center;margin-top:40vh;">Error: No se pudo cargar datos_municipales.json</h1>';
     return;
@@ -310,8 +320,8 @@ async function init() {
 
   // Init map
   map = L.map('map', {
-    center: [4.75, -74.1],
-    zoom: 8,
+    center: [4.6, -74.3],
+    zoom: 9,
     zoomControl: false,
     attributionControl: false
   });
@@ -452,6 +462,100 @@ function createLayers() {
 
   // Layer: Votacion (starts empty, filled during voting sim)
   layers.votacion = L.layerGroup();
+
+  // Layer: Interacciones del Debate
+  createInteraccionesLayer();
+}
+
+function createInteraccionesLayer() {
+  if (!INTERACCIONES || !INTERACCIONES.interacciones) return;
+  layers.interacciones = L.layerGroup();
+
+  // Group by municipio to avoid overlapping
+  const byMuni = {};
+  INTERACCIONES.interacciones.forEach(ix => {
+    const key = `${ix.lat},${ix.lng}`;
+    if (!byMuni[key]) byMuni[key] = [];
+    byMuni[key].push(ix);
+  });
+
+  Object.values(byMuni).forEach(group => {
+    const first = group[0];
+    const count = group.length;
+    const color = first.bancada_id === 1 ? '#4fc3f7' :
+                  first.bancada_id === 2 ? '#ff5252' :
+                  first.bancada_id === 3 ? '#66bb6a' :
+                  first.bancada_id === 4 ? '#ba68c8' :
+                  first.bancada_id === 5 ? '#ffd54f' :
+                  first.bancada_id === 6 ? '#ff8a65' : '#78909c';
+
+    const marker = L.circleMarker([first.lat, first.lng], {
+      radius: 10 + count * 3,
+      color: color,
+      weight: 3,
+      fillColor: color,
+      fillOpacity: 0.6
+    });
+
+    const names = group.map(g => `<b>${g.nombre}</b> (${g.bancada})`).join('<br>');
+    const topics = [...new Set(group.flatMap(g => g.temas))].join(', ');
+    marker.bindTooltip(
+      `<div style="font-size:13px"><b>💬 ${count} consulta${count>1?'s':''}</b><br>${names}<br><i>Temas: ${topics}</i></div>`,
+      { className: 'muni-tooltip', direction: 'top' }
+    );
+    marker.on('click', () => openInteraccionesSidebar(group));
+    layers.interacciones.addLayer(marker);
+  });
+
+  layers.interacciones.addTo(map);
+}
+
+function openInteraccionesSidebar(group) {
+  const sb = document.getElementById('sidebar');
+  sb.classList.add('open');
+
+  document.getElementById('sb-nombre').textContent = group[0].municipio;
+  document.getElementById('sb-provincia').textContent = `${group.length} interaccion${group.length>1?'es':''} del debate`;
+
+  let html = '<div style="font-size:0.8rem">';
+  group.forEach((ix, i) => {
+    html += `<div style="margin:8px 0;padding:8px;background:rgba(42,58,106,0.4);border-radius:6px;border-left:3px solid ${ix.bancada_id===1?'#4fc3f7':ix.bancada_id===2?'#ff5252':ix.bancada_id===3?'#66bb6a':ix.bancada_id===4?'#ba68c8':ix.bancada_id===5?'#ffd54f':ix.bancada_id===6?'#ff8a65':'#78909c'}">`;
+    html += `<b>${ix.nombre}</b> <span style="color:#7a8ab5">[${ix.bancada}]</span><br>`;
+    html += `<span style="color:#b0bec5">❓ ${ix.pregunta.substring(0,80)}${ix.pregunta.length>80?'...':''}</span><br>`;
+    html += `<span style="color:#81c784">💡 ${ix.respuesta.substring(0,100)}${ix.respuesta.length>100?'...':''}</span><br>`;
+    html += `<span style="color:#7a8ab5;font-size:0.7rem">🧠 Asesor: ${ix.asesor} | 🎙️ Voz: ${ix.voz}</span>`;
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Replace radar with interacciones content
+  document.getElementById('radar-container').innerHTML = html;
+  if (radarChart) { radarChart.destroy(); radarChart = null; }
+
+  // Update stats
+  document.getElementById('sb-poblacion').textContent = group.length;
+  document.getElementById('sb-area').textContent = group.map(g => g.asesor).filter((v,i,a) => a.indexOf(v)===i).length + ' asesores';
+  document.getElementById('sb-rural').textContent = group[0].hora;
+  document.getElementById('sb-veredas').textContent = [...new Set(group.flatMap(g => g.temas))].length + ' temas';
+  document.getElementById('sb-nbi').textContent = group[0].bancada;
+
+  document.getElementById('sb-alumbrado-val').textContent = 'Debate IA';
+  document.getElementById('sb-alumbrado-bar').style.width = '100%';
+  document.getElementById('sb-internet-val').textContent = 'Activo';
+  document.getElementById('sb-internet-bar').style.width = '100%';
+
+  document.getElementById('sb-score').textContent = '🔥';
+  document.getElementById('sb-score').style.color = '#ff5252';
+  document.getElementById('sb-luminarias').textContent = group.length;
+  document.getElementById('sb-hectareas').textContent = 'consultas';
+  document.getElementById('sb-costo').textContent = 'Ley 245/2025';
+  document.getElementById('sb-familias').textContent = 'Regulacion IA';
+  document.getElementById('sb-iot').textContent = group[0].provincia;
+
+  document.getElementById('sb-riesgos').textContent = 'Debate sobre regulacion de Inteligencia Artificial en servicios publicos de Colombia.';
+  document.getElementById('sb-crono').textContent = 'Fase actual: VOTACION | Temperatura: 85/100 | Probabilidad: 52%';
+
+  map.flyTo([group[0].lat, group[0].lng], 10, { duration: 1 });
 }
 
 function generateNonPilotMunicipios() {
@@ -517,7 +621,8 @@ function bindLayerToggles() {
     'layer-iot': 'iot',
     'layer-riesgo': 'riesgo',
     'layer-nbi': 'nbi',
-    'layer-votacion': 'votacion'
+    'layer-votacion': 'votacion',
+    'layer-interacciones': 'interacciones'
   };
 
   for (const [checkboxId, layerKey] of Object.entries(mapping)) {
@@ -537,6 +642,22 @@ function bindLayerToggles() {
    KPI UPDATE
    ═══════════════════════════════════════════════════════════════ */
 function updateKPIs() {
+  if (INTERACCIONES && INTERACCIONES.kpis) {
+    const dk = INTERACCIONES.kpis;
+    document.getElementById('kpi-municipios').textContent = dk.municipios_representados;
+    document.getElementById('kpi-inversion').textContent = dk.interacciones + ' consultas';
+    document.getElementById('kpi-luminarias').textContent = dk.concejales_activos;
+    document.getElementById('kpi-hectareas').textContent = dk.consultas_asesores + ' asesorias';
+    document.getElementById('kpi-familias').textContent = dk.total_participantes;
+    document.getElementById('kpi-iot').textContent = 'IA';
+    const lbls = document.querySelectorAll('#kpi-bar .kpi-item .kpi-label');
+    if (lbls.length >= 6) {
+      lbls[0].textContent = 'Municipios'; lbls[1].textContent = 'Interacciones';
+      lbls[2].textContent = 'Concejales'; lbls[3].textContent = 'Asesorias';
+      lbls[4].textContent = 'Participantes'; lbls[5].textContent = 'Tema';
+    }
+    return;
+  }
   if (!DATA) return;
   const k = DATA.kpis;
   animateNumber('kpi-municipios', k.municipios_piloto);

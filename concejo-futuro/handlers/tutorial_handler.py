@@ -37,8 +37,7 @@ ASESORES_BLOCK = (
 LIVE_CONTEXT_BLOCK = (
     "*📡 Contexto en tiempo real*\n"
     "Tu asesor siempre está al tanto de: fase actual, últimos tuits en "
-    "pantalla, bombas informativas, fake news, alertas institucionales y "
-    "votaciones. No hace falta recordárselo."
+    "pantalla, alertas institucionales y votaciones. No hace falta recordárselo."
 )
 
 
@@ -91,8 +90,7 @@ ADMIN_GUIDE = (
     "votación, etc.). La fase votación arranca un timer de 5 min.\n"
     "• `/broadcast` y `/presion` sin texto generan un *borrador con IA* "
     "basado en lo que está pasando; tú apruebas, regeneras o cancelas.\n"
-    "• `/bomba`, `/fakenews`, `/tweet` te muestran un catálogo con "
-    "preview antes de enviar.\n"
+    "• `/tweet` muestra un catálogo con preview antes de publicar.\n"
     "• `/ronda`, `/pantalla`, `/gabinete_remover`, `/gabinete_amenaza` "
     "tienen botones para elegir sin escribir nada.\n"
     "• `/historial_votaciones` muestra trazabilidad de votaciones."
