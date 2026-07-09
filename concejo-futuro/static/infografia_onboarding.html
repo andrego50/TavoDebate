@@ -1,0 +1,474 @@
+<title>TavoDebate — Guía de Inicio</title>
+<style>
+:root {
+  --bg:        #0D2018;
+  --surface:   #152A1E;
+  --surface-2: #1C3828;
+  --border:    #2A5038;
+  --gold:      #C9A84C;
+  --gold-dim:  #8A7030;
+  --text:      #EDE8DF;
+  --muted:     #7BA88A;
+  --chip-bg:   #0A1A11;
+  --chip-text: #C9A84C;
+  --chip-bdr:  #344F3C;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:        #F0EDE6;
+    --surface:   #FFFFFF;
+    --surface-2: #E9F0EB;
+    --border:    #BDD0C4;
+    --gold:      #9A7328;
+    --gold-dim:  #BF9840;
+    --text:      #111C16;
+    --muted:     #4A7A5A;
+    --chip-bg:   #E9F0EB;
+    --chip-text: #2D6644;
+    --chip-bdr:  #BDD0C4;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0D2018;--surface:#152A1E;--surface-2:#1C3828;--border:#2A5038;
+  --gold:#C9A84C;--gold-dim:#8A7030;--text:#EDE8DF;--muted:#7BA88A;
+  --chip-bg:#0A1A11;--chip-text:#C9A84C;--chip-bdr:#344F3C;
+}
+:root[data-theme="light"] {
+  --bg:#F0EDE6;--surface:#FFFFFF;--surface-2:#E9F0EB;--border:#BDD0C4;
+  --gold:#9A7328;--gold-dim:#BF9840;--text:#111C16;--muted:#4A7A5A;
+  --chip-bg:#E9F0EB;--chip-text:#2D6644;--chip-bdr:#BDD0C4;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 2rem 1rem 3rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── HEADER ── */
+.header {
+  text-align: center;
+  padding: 2.75rem 1.5rem 2.25rem;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 2rem;
+  padding: 0.3rem 0.9rem;
+  margin-bottom: 1.5rem;
+}
+.eyebrow-dot { width:5px;height:5px;border-radius:50%;background:var(--gold); }
+
+h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  text-wrap: balance;
+  margin-bottom: 0.75rem;
+}
+h1 em { color: var(--gold); font-style: normal; }
+
+.tagline {
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 280px;
+  margin: 0 auto 1.75rem;
+  text-wrap: balance;
+}
+
+.ornament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+.orn-line { width: 55px; height: 1px; background: var(--border); }
+.orn-diamond {
+  width: 7px; height: 7px;
+  background: var(--gold);
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+
+/* ── MULTIMODAL PILLS ── */
+.modalities {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.5rem 0;
+}
+.mod-pill {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.5rem 0.625rem;
+  text-align: center;
+}
+.mod-icon { font-size: 1.4rem; display: block; margin-bottom: 0.25rem; line-height:1; }
+.mod-label { font-size: 0.72rem; color: var(--muted); display: block; }
+
+/* ── STEPS ── */
+.steps-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 1.75rem 0 0.875rem;
+}
+.steps-label::before,
+.steps-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+.steps { display: flex; flex-direction: column; gap: 0.625rem; }
+
+.step {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.125rem 1rem 0.875rem;
+  display: grid;
+  grid-template-columns: 2.5rem 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.step-n {
+  width: 2.125rem;
+  height: 2.125rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Georgia, serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--gold);
+  flex-shrink: 0;
+  margin-top: 0.075rem;
+  background: var(--surface-2);
+}
+
+.step-body {}
+.step-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin-bottom: 0.3rem;
+}
+.step-icon { font-size: 1rem; line-height: 1.2; }
+.step-title { font-size: 0.9rem; font-weight: 600; color: var(--text); line-height: 1.3; }
+.step-desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.45rem; }
+.chip {
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 0.72rem;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  border: 1px solid var(--chip-bdr);
+  border-radius: 4px;
+  padding: 0.175rem 0.5rem;
+  letter-spacing: 0.01em;
+}
+
+/* ── NOTE ── */
+.note {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gold-dim);
+  border-radius: 0 10px 10px 0;
+  padding: 0.875rem 1.125rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0.625rem 0;
+}
+.note strong { color: var(--text); }
+
+/* ── COMMAND REFERENCE ── */
+.cmd-section {
+  margin-top: 1.75rem;
+}
+.cmd-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.875rem;
+}
+.cmd-label::before,
+.cmd-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+.cmd-table {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.cmd-row {
+  display: grid;
+  grid-template-columns: 11ch 1fr;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+.cmd-row:last-child { border-bottom: none; }
+.cmd-key, .cmd-val {
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.cmd-key {
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  color: var(--gold);
+  font-size: 0.76rem;
+  border-right: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.cmd-val { color: var(--muted); }
+
+/* ── FOOTER ── */
+.footer {
+  text-align: center;
+  padding: 2rem 1rem 0.5rem;
+  border-top: 1px solid var(--border);
+  margin-top: 1.75rem;
+}
+.bot-handle {
+  font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 1.125rem;
+  color: var(--gold);
+  margin-bottom: 0.4rem;
+  letter-spacing: 0.01em;
+}
+.footer-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.footer-tagline {
+  font-family: Georgia, serif;
+  font-size: 0.825rem;
+  color: var(--muted);
+  margin-top: 1rem;
+  font-style: italic;
+}
+</style>
+
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="eyebrow">
+      <span class="eyebrow-dot"></span>
+      Plataforma Legislativa
+    </div>
+    <h1>Tavo<em>Debate</em></h1>
+    <p class="tagline">Participa en debates legislativos reales desde Telegram — propón, argumenta, negocia y vota con el respaldo de inteligencia artificial.</p>
+    <div class="ornament">
+      <div class="orn-line"></div>
+      <div class="orn-diamond"></div>
+      <div class="orn-line"></div>
+    </div>
+  </div>
+
+  <!-- MODOS DE ENTRADA -->
+  <div class="modalities">
+    <div class="mod-pill">
+      <span class="mod-icon">💬</span>
+      <span class="mod-label">Texto</span>
+    </div>
+    <div class="mod-pill">
+      <span class="mod-icon">🎤</span>
+      <span class="mod-label">Voz</span>
+    </div>
+    <div class="mod-pill">
+      <span class="mod-icon">📷</span>
+      <span class="mod-label">Fotos</span>
+    </div>
+    <div class="mod-pill">
+      <span class="mod-icon">📄</span>
+      <span class="mod-label">PDF</span>
+    </div>
+  </div>
+
+  <!-- STEPS -->
+  <div class="steps-label">Cómo participar</div>
+
+  <div class="steps">
+
+    <div class="step">
+      <div class="step-n">1</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon">🔍</span>
+          <span class="step-title">Encuentra el bot en Telegram</span>
+        </div>
+        <p class="step-desc">Busca el bot en Telegram y abre la conversación.</p>
+        <div class="chips"><span class="chip">@TavoDebate_bot</span></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">2</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon">📝</span>
+          <span class="step-title">Regístrate en 4 pasos</span>
+        </div>
+        <p class="step-desc">Ingresa tu nombre · elige tu rol (concejal, alcalde, diputado, líder campesino…) · selecciona municipio y bancada.</p>
+        <div class="chips"><span class="chip">/start</span></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">3</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon">🏛️</span>
+          <span class="step-title">Elige tu escenario</span>
+        </div>
+        <p class="step-desc">Si hay más de una sesión activa, selecciona entre Concejo Municipal o Asamblea Departamental.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">4</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon">🧠</span>
+          <span class="step-title">Habla con Tavo, tu jefe de gabinete</span>
+        </div>
+        <p class="step-desc">Escribe cualquier pregunta sobre el proyecto. Tavo consulta a 10 asesores especializados — jurídico, económico, político, tecnológico y más — y entrega una respuesta consolidada.</p>
+        <p class="step-desc" style="margin-top:0.35rem">También puedes enviar <strong>notas de voz</strong> o <strong>fotos</strong>. El sistema las procesa con IA multimodal.</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>10 asesores disponibles:</strong> ⚖️ Jurídico · 📢 Comunicaciones · 📊 Económico · 🏛️ Político · 💻 Tecnológico · 🗺️ Catastral · 🌾 Agrario · 💰 Fiscal · 🤝 Participación · 📐 Gerencia pública
+    </div>
+
+    <div class="step">
+      <div class="step-n">5</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon">📋</span>
+          <span class="step-title">Propón una enmienda</span>
+        </div>
+        <p class="step-desc">Redacta tu propuesta de modificación al proyecto. Otros participantes pueden apoyarla.</p>
+        <div class="chips">
+          <span class="chip">/proponer [texto]</span>
+          <span class="chip">/apoyar N</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">6</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon">🗳️</span>
+          <span class="step-title">Vota cuando se abra la sesión</span>
+        </div>
+        <p class="step-desc">Cuando el facilitador abra la votación, emite tu voto. Solo concejales y diputados votan el proyecto final.</p>
+        <div class="chips">
+          <span class="chip">/votar SI</span>
+          <span class="chip">/votar NO</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">7</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon">📄</span>
+          <span class="step-title">Descarga tus documentos oficiales</span>
+        </div>
+        <p class="step-desc">Obtén el PDF formal de tu ponencia y de cada propuesta registrada, con formato de acta legislativa colombiana.</p>
+        <div class="chips"><span class="chip">/mis_documentos</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- COMANDO REF -->
+  <div class="cmd-section">
+    <div class="cmd-label">Referencia rápida</div>
+    <div class="cmd-table">
+      <div class="cmd-row">
+        <div class="cmd-key">/estado</div>
+        <div class="cmd-val">Tu resumen de participación</div>
+      </div>
+      <div class="cmd-row">
+        <div class="cmd-key">/proponer</div>
+        <div class="cmd-val">Radicar una enmienda al proyecto</div>
+      </div>
+      <div class="cmd-row">
+        <div class="cmd-key">/propuestas_todas</div>
+        <div class="cmd-val">Ver todas las propuestas por apoyos</div>
+      </div>
+      <div class="cmd-row">
+        <div class="cmd-key">/votar</div>
+        <div class="cmd-val">Votar SI / NO / abstención</div>
+      </div>
+      <div class="cmd-row">
+        <div class="cmd-key">/asesores</div>
+        <div class="cmd-val">Elegir un especialista directo</div>
+      </div>
+      <div class="cmd-row">
+        <div class="cmd-key">/mis_documentos</div>
+        <div class="cmd-val">Descargar PDFs legislativos</div>
+      </div>
+      <div class="cmd-row">
+        <div class="cmd-key">/help</div>
+        <div class="cmd-val">Lista completa de comandos</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="bot-handle">@TavoDebate_bot</div>
+    <div class="footer-sub">Busca este bot en Telegram para comenzar</div>
+    <div class="footer-tagline">Legislar con inteligencia.</div>
+  </div>
+
+</div>

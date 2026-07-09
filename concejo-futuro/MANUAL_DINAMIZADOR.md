@@ -77,6 +77,23 @@ El sistema soporta múltiples escenarios de simulación simultáneos en la misma
 
 ---
 
+## Materiales de bienvenida para participantes
+
+Están en `static/` y se sirven automáticamente desde el Pantalla Agent:
+
+| Archivo | Descripción |
+|---|---|
+| `static/audio_tutorial.mp3` | Audio tutorial ~90 seg (voz es-CO-GonzaloNeural). Envíalo por Telegram o ponlo en la pantalla de bienvenida. |
+| `static/infografia_onboarding.html` | Infografía vertical interactiva — 7 pasos desde `/start` hasta `/mis_documentos`. Abre en browser o imprime en A4 portrait. |
+
+Para enviar el audio a todos los participantes al inicio:
+```
+/broadcast_audio  (próximamente)
+```
+Por ahora, descarga `audio_tutorial.mp3` y compártelo manualmente por Telegram.
+
+---
+
 ## Antes del evento
 
 ### 1. Verificar que el sistema está corriendo
