@@ -1,6 +1,7 @@
 """TavoDebate - Agente Chat (responde a los 150 concejales)."""
 
 import asyncio
+import httpx
 import json
 import logging
 
@@ -149,9 +150,12 @@ class ChatAgent(BaseAgent):
         elif command == "/msg_negociacion":
             from handlers.negotiation_handlers import handle_msg_negociacion
             await handle_msg_negociacion(self, user_id, chat_id, args)
-        elif command == "/mi_certificado":
-            from handlers.certificate_generator import handle_certificado
-            await handle_certificado(self, user_id, chat_id)
+        elif command == "/mis_documentos":
+            from handlers.document_handlers import handle_mis_documentos
+            await handle_mis_documentos(self, user_id, chat_id)
+        elif command == "/doc_ponencia":
+            from handlers.document_handlers import handle_documento_ponencia
+            await handle_documento_ponencia(self, user_id, chat_id)
         elif command == "/preparar_ponencia":
             from handlers.ponencia_handler import handle_preparar_ponencia
             await handle_preparar_ponencia(self, user_id, chat_id, args)
@@ -256,7 +260,7 @@ class ChatAgent(BaseAgent):
         elif command in (
             "/broadcast", "/presion", "/gabinete_remover",
             "/gabinete_amenaza", "/fase", "/ronda", "/tweet",
-            "/llm", "/modo_test", "/briefing", "/pantalla",
+            "/llm", "/modo_test", "/briefing",
             "/asignar_rol", "/roles", "/historial_votaciones", "/reset_debate",
         ):
             if user_id in settings.admin_ids:
@@ -649,16 +653,17 @@ class ChatAgent(BaseAgent):
 
         await self._send_response(chat_id, "Transcribiendo tu nota de voz...")
 
+        # Suscribir antes de publicar para evitar race condition si el
+        # audio_agent procesa la respuesta antes de que lleguemos al subscribe.
+        pubsub = self.bus.pubsub()
+        await pubsub.subscribe(f"audio:result:{user_id}")
+
         await self.bus.publish("audio:transcribe", {
             "user_id": user_id,
             "chat_id": chat_id,
             "file_id": file_id,
             "callback_channel": f"audio:result:{user_id}",
         })
-
-        # Wait for transcription result
-        pubsub = self.bus.pubsub()
-        await pubsub.subscribe(f"audio:result:{user_id}")
         try:
             async for msg in pubsub.listen():
                 if msg["type"] == "message":
@@ -769,7 +774,14 @@ class ChatAgent(BaseAgent):
             "callback_query_id": callback_id,
         })
 
-        if data.startswith("vote_"):
+        if data.startswith("doc_propuesta_"):
+            pid = int(data.split("_")[-1])
+            from handlers.document_handlers import handle_documento_propuesta
+            await handle_documento_propuesta(self, user_id, chat_id, pid)
+        elif data == "doc_ponencia":
+            from handlers.document_handlers import handle_documento_ponencia
+            await handle_documento_ponencia(self, user_id, chat_id)
+        elif data.startswith("vote_"):
             from handlers.voting_handlers import handle_vote_callback
             await handle_vote_callback(self, user_id, chat_id, data, callback_id)
         elif data.startswith("approve_"):

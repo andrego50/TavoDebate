@@ -533,7 +533,7 @@ async def handle_onboard_callback(agent, user_id: int, chat_id: int, data: str, 
                     },
                 )
 
-        if rol == "concejal":
+        if rol in ("concejal", "presidente_concejo"):
             # Step 5: Posición sobre el proyecto (3 opciones simples)
             keyboard = [
                 [{"text": "✅ A FAVOR del proyecto", "callback_data": "onboard_ban_1"}],
@@ -806,7 +806,7 @@ async def handle_help(agent, chat_id: int):
         "/votar\\_enmienda N — Votar enmienda N\n\n"
         "*Info:*\n"
         "/estado — Tu resumen personal\n"
-        "/mi\\_certificado — Certificado PDF\n"
+        "/mis\\_documentos — Descargar ponencia o propuestas en PDF\n"
         "/help — Este mensaje\n\n"
         "_Escribe cualquier pregunta para consultar a la IA._"
     )

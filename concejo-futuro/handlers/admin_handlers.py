@@ -1158,7 +1158,7 @@ async def _execute_phase_actions(agent, fase_key: str, admin_chat_id: int):
                 "text": (
                     "🎓 *SESIÓN FINALIZADA*\n\n"
                     "Gracias por participar en el Gran Concejo del Futuro.\n\n"
-                    "Descarga tu certificado de participación: /mi\\_certificado\n\n"
+                    "Descarga tus documentos en PDF: /mis\\_documentos\n\n"
                     f"🔗 Revive el debate en vivo:\n{pantalla_url}"
                 ),
                 "parse_mode": "Markdown",
