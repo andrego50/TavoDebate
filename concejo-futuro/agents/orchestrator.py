@@ -7,15 +7,19 @@ import logging
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from agents.base_agent import BaseAgent
 from core.config import settings
 from core.redis_bus import RedisBus
 from db.database import init_db, close_db, get_session
+from routers.miniapp import router as miniapp_router
 
 logger = logging.getLogger("orchestrator")
 
 app = FastAPI(title="TavoDebate Orchestrator")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(miniapp_router)
 
 
 class Orchestrator(BaseAgent):

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>TavoDebate</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --accent:#2E7D32;--accent2:#1B5E20;--gold:#F9A825;
+  --card-bg:var(--tg-theme-secondary-bg-color,#ffffff);
+  --bg:var(--tg-theme-bg-color,#f0f4f1);
+  --sub:var(--tg-theme-hint-color,#5a7060);
+  --text:var(--tg-theme-text-color,#0f1c10);
+  --card-border:rgba(46,125,50,.14);
+  --shadow:0 2px 10px rgba(0,0,0,.08);
+  --r:14px;
+}
+html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text)}
+#app{min-height:100vh;display:flex;flex-direction:column;padding-bottom:32px}
+.hdr{background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%);padding:22px 16px 20px;color:#fff}
+.hdr-row{display:flex;align-items:center;gap:12px}
+.avatar{width:48px;height:48px;flex-shrink:0;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.32);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px}
+.hdr-info{flex:1;min-width:0}
+.hdr-name{font-size:17px;font-weight:700;line-height:1.2}
+.hdr-sub{font-size:12px;opacity:.8;margin-top:2px}
+.hdr-pill{background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.35);border-radius:20px;padding:4px 11px;font-size:12px;font-weight:700;white-space:nowrap;color:#fff}
+.hdr-pill.gold{background:rgba(249,168,37,.22);border-color:rgba(249,168,37,.5);color:#ffd54f}
+.strip{display:flex;background:var(--card-bg);margin:12px 14px 0;border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.stat{flex:1;text-align:center;padding:12px 4px;border-right:1px solid var(--card-border)}
+.stat:last-child{border-right:none}
+.stat-n{font-size:21px;font-weight:800;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+.stat-l{font-size:9.5px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
+.sec-title{font-size:10.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.8px;padding:16px 14px 7px}
+.cta{margin:12px 14px 0;background:linear-gradient(135deg,#43a047 0%,#2E7D32 100%);border-radius:var(--r);padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;color:#fff;box-shadow:0 4px 18px rgba(46,125,50,.38);user-select:none;animation:pg 2.5s ease-in-out infinite;transition:transform .12s}
+.cta:active{transform:scale(.97)}
+@keyframes pg{0%,100%{box-shadow:0 4px 18px rgba(46,125,50,.38)}50%{box-shadow:0 4px 28px rgba(46,125,50,.62)}}
+.cta-ico{font-size:30px;flex-shrink:0}
+.cta-body{flex:1;min-width:0}
+.cta-lbl{font-size:15px;font-weight:700;line-height:1.2}
+.cta-sub{font-size:12px;opacity:.82;margin-top:2px}
+.cta-arr{font-size:20px;opacity:.7;flex-shrink:0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px}
+.card{background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--r);padding:15px 12px 13px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:var(--shadow);user-select:none;transition:transform .12s,opacity .12s}
+.card:active{transform:scale(.95);opacity:.85}
+.card-ico{font-size:26px;line-height:1}
+.card-lbl{font-size:12.5px;font-weight:700;color:var(--text);line-height:1.2}
+.card-sub{font-size:10.5px;color:var(--sub)}
+.blist{background:var(--card-bg);margin:0 14px;border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.brow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--card-border)}
+.brow:last-child{border-bottom:none}
+.bbar{width:4px;height:32px;border-radius:2px;flex-shrink:0}
+.bname{flex:1}
+.bname-title{font-size:13px;font-weight:600}
+.bname-sub{font-size:10.5px;color:var(--sub);margin-top:1px}
+.bpos{font-size:9.5px;font-weight:700;background:var(--bg);border-radius:8px;padding:2px 7px;letter-spacing:.3px;color:var(--sub);white-space:nowrap}
+.bcount{font-size:15px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;width:24px;text-align:right}
+.bb{margin:0 14px;border-radius:var(--r);padding:14px 16px;display:flex;align-items:center;gap:12px;color:#fff;box-shadow:var(--shadow)}
+.bb-info{flex:1;min-width:0}
+.bb-name{font-size:15px;font-weight:700}
+.bb-pos{display:inline-block;margin-top:4px;font-size:10.5px;font-weight:700;letter-spacing:.5px;background:rgba(255,255,255,.2);border-radius:10px;padding:2px 8px}
+.bb-right{text-align:center;flex-shrink:0}
+.bb-count{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.bb-clabel{font-size:9.5px;opacity:.75;margin-top:1px}
+.info-card{background:var(--card-bg);margin:0 14px;border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.irow{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--card-border)}
+.irow:last-child{border-bottom:none}
+.iico{font-size:16px;width:22px;text-align:center;flex-shrink:0}
+.ibody{flex:1}
+.ilabel{font-size:10px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px}
+.ival{font-size:13px;font-weight:600;margin-top:1px}
+.ibadge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(46,125,50,.12);color:var(--accent)}
+.live{display:inline-flex;align-items:center;gap:6px;margin:10px 14px 0;background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:600;box-shadow:var(--shadow);color:var(--text)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#43a047;box-shadow:0 0 6px rgba(67,160,71,.7);animation:blink 1.8s ease-in-out infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.footer{padding:18px 16px 6px;text-align:center;font-size:11px;color:var(--sub)}
+.err-screen{padding:48px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px}
+.err-ico{font-size:52px}
+.err-title{font-size:17px;font-weight:700}
+.err-sub{font-size:13px;color:var(--sub)}
+</style>
+</head>
+<body>
+<div id="app"><div class="err-screen"><div class="err-ico">⏳</div><p class="err-title">Cargando…</p></div></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.expand(); tg.ready(); }
+
+function send(action, data) {
+  if (tg) tg.sendData(JSON.stringify({ action, ...data }));
+}
+
+function renderError(msg) {
+  document.getElementById('app').innerHTML = `
+    <div class="err-screen">
+      <div class="err-ico">🏛️</div>
+      <p class="err-title">TavoDebate</p>
+      <p class="err-sub">${msg || 'Abre esta app desde Telegram'}</p>
+    </div>`;
+}
+
+function renderNotRegistered() {
+  document.getElementById('app').innerHTML = `
+    <div class="err-screen">
+      <div class="err-ico">📋</div>
+      <p class="err-title">Perfil incompleto</p>
+      <p class="err-sub">Completa tu registro enviando /start al bot de TavoDebate</p>
+    </div>`;
+}
+
+function renderAdmin(d) {
+  const fase = d.fase_actual || 'registro';
+  const brows = (d.bancadas || []).map(b => `
+    <div class="brow">
+      <div class="bbar" style="background:${b.color}"></div>
+      <div class="bname">
+        <div class="bname-title">${b.nombre}</div>
+        <div class="bname-sub">${b.posicion}</div>
+      </div>
+      <div class="bpos">${b.posicion}</div>
+      <div class="bcount">${b.count}</div>
+    </div>`).join('');
+
+  document.getElementById('app').innerHTML = `
+    <div class="hdr">
+      <div class="hdr-row">
+        <div class="avatar">🎛️</div>
+        <div class="hdr-info">
+          <div class="hdr-name">${d.nombre}</div>
+          <div class="hdr-sub">Facilitador · ${d.evento_nombre}</div>
+        </div>
+        <div class="hdr-pill gold">${capitalize(fase)}</div>
+      </div>
+    </div>
+
+    <div class="strip">
+      <div class="stat"><div class="stat-n">${d.stats.participantes}</div><div class="stat-l">Participantes</div></div>
+      <div class="stat"><div class="stat-n">${d.stats.bancadas}</div><div class="stat-l">Bancadas</div></div>
+      <div class="stat"><div class="stat-n">${d.stats.propuestas}</div><div class="stat-l">Propuestas</div></div>
+      <div class="stat"><div class="stat-n">${d.stats.votos}</div><div class="stat-l">Votos</div></div>
+    </div>
+
+    <div class="live"><div class="live-dot"></div>Fase activa: <strong>${capitalize(fase)}</strong></div>
+
+    <div class="cta" onclick="send('abrir_votacion',{})">
+      <span class="cta-ico">🗳️</span>
+      <div class="cta-body">
+        <div class="cta-lbl">Abrir sesión de votación</div>
+        <div class="cta-sub">Controla desde el bot con /fase o /broadcast →</div>
+      </div>
+      <span class="cta-arr">›</span>
+    </div>
+
+    <div class="sec-title">Control de sesión</div>
+    <div class="grid">
+      <div class="card" onclick="send('broadcast',{})"><span class="card-ico">📢</span><span class="card-lbl">Broadcast</span><span class="card-sub">Mensaje a todos</span></div>
+      <div class="card" onclick="send('estado',{})"><span class="card-ico">📊</span><span class="card-lbl">Estado</span><span class="card-sub">Resumen completo</span></div>
+      <div class="card" onclick="send('cambiar_fase',{})"><span class="card-ico">🎭</span><span class="card-lbl">Cambiar fase</span><span class="card-sub">Registro→Debate→Voto</span></div>
+      <div class="card" onclick="send('documentos',{})"><span class="card-ico">📁</span><span class="card-lbl">Documentos</span><span class="card-sub">PDFs y ponencias</span></div>
+    </div>
+
+    <div class="sec-title">Participantes por bancada</div>
+    <div class="blist">${brows}</div>
+
+    <div class="footer">TavoDebate · FastAnalytics.co</div>`;
+}
+
+function renderUser(d) {
+  const fase = d.fase_actual || 'registro';
+  const votoHTML = d.puede_votar
+    ? `<span class="ibadge">Puede votar</span>`
+    : `<span class="ibadge" style="background:rgba(0,0,0,.06);color:var(--sub)">Observador con voz</span>`;
+
+  const estatStat = d.puede_votar
+    ? `<div class="stat"><div class="stat-n">✓</div><div class="stat-l">Voto activo</div></div>`
+    : `<div class="stat"><div class="stat-n">—</div><div class="stat-l">Sin voto</div></div>`;
+
+  document.getElementById('app').innerHTML = `
+    <div class="hdr">
+      <div class="hdr-row">
+        <div class="avatar">${rolIco(d.grupo)}</div>
+        <div class="hdr-info">
+          <div class="hdr-name">${d.nombre}</div>
+          <div class="hdr-sub">${d.rol_nombre} · ${d.evento_nombre}</div>
+        </div>
+        <div class="hdr-pill">${d.bancada_nombre.split(' ').slice(0,2).join(' ')}</div>
+      </div>
+    </div>
+
+    <div class="strip">
+      <div class="stat"><div class="stat-n">${d.stats.consultas}</div><div class="stat-l">Consultas</div></div>
+      <div class="stat"><div class="stat-n">${d.stats.propuestas}</div><div class="stat-l">Propuestas</div></div>
+      ${estatStat}
+    </div>
+
+    <div class="live"><div class="live-dot"></div>Sesión: <strong>${capitalize(fase)}</strong></div>
+
+    <div class="cta" onclick="send('participar',{})">
+      <span class="cta-ico">📋</span>
+      <div class="cta-body">
+        <div class="cta-lbl">Participar en el debate</div>
+        <div class="cta-sub">Escríbele a Tavo o envía una nota de voz →</div>
+      </div>
+      <span class="cta-arr">›</span>
+    </div>
+
+    <div class="sec-title">Mi bancada</div>
+    <div class="bb" style="background:linear-gradient(135deg,${lighten(d.bancada_color)},${d.bancada_color})">
+      <div class="bb-info">
+        <div class="bb-name">${d.bancada_nombre}</div>
+        <div class="bb-pos">${d.bancada_posicion}</div>
+      </div>
+      <div class="bb-right">
+        <div class="bb-count">${d.bancada_count}</div>
+        <div class="bb-clabel">participantes</div>
+      </div>
+    </div>
+
+    <div class="sec-title">Mis herramientas</div>
+    <div class="grid">
+      <div class="card" onclick="send('mis_documentos',{})"><span class="card-ico">📄</span><span class="card-lbl">Mis Docs</span><span class="card-sub">PDFs generados</span></div>
+      <div class="card" onclick="send('ponencia',{})"><span class="card-ico">🎤</span><span class="card-lbl">Ponencia</span><span class="card-sub">Presentar posición</span></div>
+      <div class="card" onclick="send('consultar',{})"><span class="card-ico">💬</span><span class="card-lbl">Consultar</span><span class="card-sub">Preguntarle a Tavo</span></div>
+      <div class="card" onclick="send('estado_personal',{})"><span class="card-ico">📊</span><span class="card-lbl">Mi estado</span><span class="card-sub">Actividad registrada</span></div>
+    </div>
+
+    <div class="sec-title">Mi perfil</div>
+    <div class="info-card">
+      <div class="irow"><span class="iico">${rolIco(d.grupo)}</span><div class="ibody"><div class="ilabel">Rol</div><div class="ival">${d.rol_nombre}</div></div></div>
+      <div class="irow"><span class="iico">📍</span><div class="ibody"><div class="ilabel">Municipio</div><div class="ival">${d.municipio}${d.provincia ? ', ' + d.provincia : ''}</div></div></div>
+      <div class="irow"><span class="iico">🏦</span><div class="ibody"><div class="ilabel">Bancada</div><div class="ival">${d.bancada_nombre} · <span style="color:var(--sub);font-size:12px">${d.bancada_posicion}</span></div></div></div>
+      <div class="irow"><span class="iico">🗳️</span><div class="ibody"><div class="ilabel">Votación</div><div class="ival">${votoHTML}</div></div></div>
+    </div>
+
+    <div class="footer">TavoDebate · FastAnalytics.co</div>`;
+}
+
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+function rolIco(grupo) {
+  return { concejo:'🏛️', gobierno:'👔', sociedad_civil:'🧑‍🌾', control:'📋', empresa:'🏢' }[grupo] || '👤';
+}
+
+function lighten(hex) {
+  // Devuelve una versión más clara del color para el gradiente del banner
+  try {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, ((n >> 16) & 0xff) + 50);
+    const g = Math.min(255, ((n >> 8) & 0xff) + 50);
+    const b = Math.min(255, (n & 0xff) + 50);
+    return `#${((1<<24)|(r<<16)|(g<<8)|b).toString(16).slice(1)}`;
+  } catch(_) { return hex; }
+}
+
+// Init
+const initData = tg?.initData || '';
+if (!initData) {
+  renderError('Abre esta app desde Telegram');
+} else {
+  fetch('/miniapp/data', { headers: { 'X-Telegram-Init-Data': initData } })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => {
+      if (!d.registered) { renderNotRegistered(); return; }
+      if (d.is_admin) renderAdmin(d);
+      else renderUser(d);
+    })
+    .catch(() => renderError('Error al cargar. Intenta de nuevo.'));
+}
+</script>
+</body>
+</html>

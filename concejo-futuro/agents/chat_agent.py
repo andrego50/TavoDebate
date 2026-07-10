@@ -150,6 +150,13 @@ class ChatAgent(BaseAgent):
         elif command == "/msg_negociacion":
             from handlers.negotiation_handlers import handle_msg_negociacion
             await handle_msg_negociacion(self, user_id, chat_id, args)
+        elif command == "/miniapp":
+            miniapp_url = f"https://{settings.vps_domain}/miniapp"
+            keyboard = json.dumps({"inline_keyboard": [[{
+                "text": "🏛️ Abrir TavoDebate App",
+                "web_app": {"url": miniapp_url}
+            }]]})
+            await self._send_response(chat_id, "🏛️ *TavoDebate App*\nAbre tu panel personal:", reply_markup=keyboard)
         elif command == "/mis_documentos":
             from handlers.document_handlers import handle_mis_documentos
             await handle_mis_documentos(self, user_id, chat_id)
